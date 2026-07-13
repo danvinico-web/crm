@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/rbac";
 import { dbConnect } from "@/lib/db";
-import { User } from "@/models";
+import { User, Team } from "@/models";
 import { ROLE_LABELS } from "@/lib/roles";
 import CreateUserForm from "@/components/CreateUserForm";
 import { DeleteButton } from "@/components/RowActions";
@@ -18,7 +18,13 @@ export default async function UsersPage() {
   if (me.role !== "ADMIN") redirect("/dashboard");
 
   await dbConnect();
-  const users = await User.find().sort({ createdAt: -1 }).lean();
+  const [users, teamDocs] = await Promise.all([
+    User.find().sort({ createdAt: -1 }).lean(),
+    Team.find().select("name").sort({ name: 1 }).lean(),
+  ]);
+  const teams = teamDocs.map((t) => ({ id: String(t._id), name: t.name }));
+  // Кураторы — аккаунты, которые могут «смотреть» за агентом (все, кроме самих агентов).
+  const curators = users.filter((u) => u.role !== "AGENT").map((u) => ({ id: String(u._id), name: u.name }));
 
   return (
     <>
@@ -27,7 +33,7 @@ export default async function UsersPage() {
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <CreateUserForm />
+        <CreateUserForm teams={teams} curators={curators} />
       </div>
 
       <div className="card table-card">

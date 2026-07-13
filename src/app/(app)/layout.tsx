@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { dbConnect } from "@/lib/db";
 import { Lead, Agent, Office } from "@/models";
+import { leadScopeFilter } from "@/lib/leadScope";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 
@@ -11,8 +12,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session?.user) redirect("/login");
 
   await dbConnect();
+  const scope = await leadScopeFilter({ id: session.user.id, role: session.user.role, name: session.user.name, email: session.user.email });
   const [leadsCount, agentsCount, officesCount] = await Promise.all([
-    Lead.countDocuments(),
+    Lead.countDocuments(scope),
     Agent.countDocuments(),
     Office.countDocuments(),
   ]);

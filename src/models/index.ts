@@ -13,3 +13,6 @@ export { default as RoutingRule } from "@/models/RoutingRule";
 export { default as Payout } from "@/models/Payout";
 export { default as LeadField } from "@/models/LeadField";
 export { default as LeadNote } from "@/models/LeadNote";
+export { default as Counter } from "@/models/Counter";
+export { default as AppSettings } from "@/models/AppSettings";
+export { default as LeadStatusDef } from "@/models/LeadStatusDef";

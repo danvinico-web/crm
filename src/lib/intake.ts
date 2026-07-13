@@ -144,8 +144,12 @@ export async function runIntake(
     if (dup) isDuplicate = true;
   }
 
-  // Комментарий и кастомные поля из payload (напр. при импорте базы клиента).
+  // Комментарий, баланс и кастомные поля из payload (напр. при импорте базы клиента).
   const comment = typeof payload.comment === "string" ? payload.comment.trim() : undefined;
+  // Баланс/капитал импортируется «как есть» (может быть диапазоном: «$1000-10,000»).
+  const balanceRawVal = payload.balance;
+  const balanceRaw =
+    balanceRawVal != null && String(balanceRawVal).trim() !== "" ? String(balanceRawVal).trim() : undefined;
   const custom = sanitizeCustom(payload.custom);
 
   // 3) Создание.
@@ -160,6 +164,7 @@ export async function runIntake(
     geo: mapped.geo,
     affiliateTag: mapped.affiliateTag,
     comment: comment || undefined,
+    balanceRaw,
     custom,
     source: source._id,
     sourceType: source.type as SourceType,

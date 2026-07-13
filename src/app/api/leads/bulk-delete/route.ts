@@ -2,6 +2,7 @@ import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Lead, Delivery, StatusEvent, AuditLog } from "@/models";
 import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
+import { leadScopeFilter, withScope } from "@/lib/leadScope";
 import { resolveLeadFilter } from "@/lib/bulk";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     if (!parsed.success) throw new HttpError(422, "Неверные данные");
 
     await dbConnect();
-    const filter = resolveLeadFilter(parsed.data);
+    const filter = withScope(resolveLeadFilter(parsed.data), await leadScopeFilter(me));
     const ids = await Lead.find(filter).distinct("_id");
     if (ids.length === 0) return { ok: true, deleted: 0 };
 

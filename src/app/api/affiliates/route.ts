@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Affiliate, AuditLog } from "@/models";
-import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
+import { apiHandler, requireRoles, HttpError } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ const createSchema = z.object({
 
 export async function GET() {
   return apiHandler(async () => {
-    await requireUser();
+    await requireRoles(["ADMIN", "USER"]);
     await dbConnect();
     const affiliates = await Affiliate.find().sort({ createdAt: 1 }).lean();
     return { affiliates: affiliates.map((a) => ({ id: String(a._id), name: a.name, tag: a.tag, platform: a.platform, status: a.status })) };
@@ -24,7 +24,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return apiHandler(async () => {
-    const me = await requireUser();
+    const me = await requireRoles(["ADMIN", "USER"]);
     const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) throw new HttpError(422, parsed.error.issues[0]?.message ?? "Неверные данные");
     await dbConnect();

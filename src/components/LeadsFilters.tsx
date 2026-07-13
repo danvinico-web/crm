@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { Download, Upload, X } from "lucide-react";
-import { LEAD_STATUSES, LEAD_STATUS_LABEL } from "@/lib/enums";
+import type { StatusDef } from "@/lib/enums";
+import SavedFilters from "@/components/SavedFilters";
+import MultiSelect from "@/components/MultiSelect";
 
 export interface LeadFilterState {
   q?: string;
-  status?: string;
+  status?: string; // мультивыбор: значения через запятую
   tag?: string;
   geo?: string;
   agent?: string;
@@ -18,6 +20,7 @@ export interface LeadFilterState {
 
 interface Props {
   current: LeadFilterState;
+  statuses: StatusDef[];
   tags: string[];
   agents: { id: string; name: string }[];
   offices: { id: string; name: string }[];
@@ -38,7 +41,11 @@ const selStyle: React.CSSProperties = {
   outline: "none",
 };
 
-export default function LeadsFilters({ current, tags, agents, offices, geos, exportHref, basePath = "/leads", hideOffice = false }: Props) {
+/** Разбор/сборка мульти-значения фильтра. */
+const split = (v?: string) => (v ? v.split(",").filter(Boolean) : []);
+const join = (a: string[]) => (a.length ? a.join(",") : undefined);
+
+export default function LeadsFilters({ current, statuses, tags, agents, offices, geos, exportHref, basePath = "/leads", hideOffice = false }: Props) {
   const router = useRouter();
 
   function apply(patch: Partial<LeadFilterState>) {
@@ -51,52 +58,47 @@ export default function LeadsFilters({ current, tags, agents, offices, geos, exp
 
   const hasActive = !!(current.status || current.tag || current.geo || current.agent || current.office || current.balance || current.from || current.to || current.q);
 
+  const agentNames = Object.fromEntries(agents.map((a) => [a.id, a.name]));
+  const officeNames = Object.fromEntries(offices.map((o) => [o.id, o.name]));
+
+  const statusOpts = statuses.map((s) => ({ value: s.key, label: s.label }));
+  const tagOpts = tags.map((t) => ({ value: t, label: t }));
+  const agentOpts = [{ value: "none", label: "Без агента" }, ...agents.map((a) => ({ value: a.id, label: a.name }))];
+  const officeOpts = [{ value: "none", label: "Без офиса" }, ...offices.map((o) => ({ value: o.id, label: o.name }))];
+  const geoOpts = geos.map((g) => ({ value: g, label: g }));
+
   return (
-    <div className="section-head">
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
-        {current.q && (
-          <div className="filter on">
-            Поиск: {current.q}
-            <X size={13} style={{ cursor: "pointer" }} onClick={() => apply({ q: undefined })} />
+    <>
+      <SavedFilters current={current} basePath={basePath} agentNames={agentNames} officeNames={officeNames} />
+      <div className="section-head">
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          {current.q && (
+            <div className="filter on">
+              Поиск: {current.q}
+              <X size={13} style={{ cursor: "pointer" }} onClick={() => apply({ q: undefined })} />
+            </div>
+          )}
+          <MultiSelect label="Все статусы" options={statusOpts} selected={split(current.status)} onChange={(v) => apply({ status: join(v) })} />
+          <MultiSelect label="Все метки" options={tagOpts} selected={split(current.tag)} onChange={(v) => apply({ tag: join(v) })} />
+          <MultiSelect label="Все агенты" options={agentOpts} selected={split(current.agent)} onChange={(v) => apply({ agent: join(v) })} />
+          {!hideOffice && (
+            <MultiSelect label="Все офисы" options={officeOpts} selected={split(current.office)} onChange={(v) => apply({ office: join(v) })} />
+          )}
+          <MultiSelect label="Все гео" options={geoOpts} selected={split(current.geo)} onChange={(v) => apply({ geo: join(v) })} />
+          <div className={`filter${current.balance === "deposit" ? " on" : ""}`} onClick={() => apply({ balance: current.balance === "deposit" ? undefined : "deposit" })}>
+            С депозитом
           </div>
-        )}
-        <select style={{ ...selStyle, ...(current.status ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }} value={current.status ?? ""} onChange={(e) => apply({ status: e.target.value || undefined })}>
-          <option value="">Все статусы</option>
-          {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_LABEL[s]}</option>)}
-        </select>
-        <select style={{ ...selStyle, ...(current.tag ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }} value={current.tag ?? ""} onChange={(e) => apply({ tag: e.target.value || undefined })}>
-          <option value="">Все метки</option>
-          {tags.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select style={{ ...selStyle, ...(current.agent ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }} value={current.agent ?? ""} onChange={(e) => apply({ agent: e.target.value || undefined })}>
-          <option value="">Все агенты</option>
-          <option value="none">Без агента</option>
-          {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-        {!hideOffice && (
-          <select style={{ ...selStyle, ...(current.office ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }} value={current.office ?? ""} onChange={(e) => apply({ office: e.target.value || undefined })}>
-            <option value="">Все офисы</option>
-            <option value="none">Без офиса</option>
-            {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
-        )}
-        <select style={{ ...selStyle, ...(current.geo ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }} value={current.geo ?? ""} onChange={(e) => apply({ geo: e.target.value || undefined })}>
-          <option value="">Все гео</option>
-          {geos.map((g) => <option key={g} value={g}>{g}</option>)}
-        </select>
-        <div className={`filter${current.balance === "deposit" ? " on" : ""}`} onClick={() => apply({ balance: current.balance === "deposit" ? undefined : "deposit" })}>
-          С депозитом
+          <input type="date" value={current.from ?? ""} onChange={(e) => apply({ from: e.target.value || undefined })} style={selStyle} title="Дата с" />
+          <input type="date" value={current.to ?? ""} onChange={(e) => apply({ to: e.target.value || undefined })} style={selStyle} title="Дата по" />
+          {hasActive && (
+            <button className="btn btn-ghost btn-sm" onClick={() => router.push(basePath)}><X size={14} /> Сбросить</button>
+          )}
         </div>
-        <input type="date" value={current.from ?? ""} onChange={(e) => apply({ from: e.target.value || undefined })} style={selStyle} title="Дата с" />
-        <input type="date" value={current.to ?? ""} onChange={(e) => apply({ to: e.target.value || undefined })} style={selStyle} title="Дата по" />
-        {hasActive && (
-          <button className="btn btn-ghost btn-sm" onClick={() => router.push(basePath)}><X size={14} /> Сбросить</button>
-        )}
+        <div style={{ display: "flex", gap: 9 }}>
+          <a className="btn btn-ghost btn-sm" href="/import"><Download size={16} /> Импорт CSV</a>
+          <a className="btn btn-ghost btn-sm" href={exportHref}><Upload size={16} /> Экспорт</a>
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 9 }}>
-        <a className="btn btn-ghost btn-sm" href="/import"><Download size={16} /> Импорт CSV</a>
-        <a className="btn btn-ghost btn-sm" href={exportHref}><Upload size={16} /> Экспорт</a>
-      </div>
-    </div>
+    </>
   );
 }

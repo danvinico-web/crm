@@ -26,7 +26,7 @@ export function normalizeStatus(
 
 export interface StatusUpdateResult {
   changed: boolean;
-  status: LeadStatus;
+  status: string;
   known: boolean;
 }
 
@@ -41,7 +41,7 @@ export async function applyStatusUpdate(
   source: EventSource,
 ): Promise<StatusUpdateResult> {
   const { status: normalized, known } = normalizeStatus(rawStatus, integration?.statusMappings);
-  const effective: LeadStatus = normalized ?? lead.status;
+  const effective: string = normalized ?? lead.status;
   const changed = normalized != null && normalized !== lead.status;
 
   await StatusEvent.create({

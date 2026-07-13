@@ -13,8 +13,9 @@ import RoutingRule from "@/models/RoutingRule";
 import Payout from "@/models/Payout";
 import LeadField from "@/models/LeadField";
 import LeadNote from "@/models/LeadNote";
+import LeadStatusDef from "@/models/LeadStatusDef";
 import { encrypt } from "@/lib/crypto";
-import type { LeadStatus, SourceType } from "@/lib/enums";
+import { DEFAULT_STATUS_DEFS, type LeadStatus, type SourceType } from "@/lib/enums";
 
 /** Детерминированный PRNG (mulberry32) — стабильные демо-данные между запусками. */
 function makeRng(seed: number) {
@@ -44,6 +45,9 @@ export async function seedIfEmpty(): Promise<void> {
 
 async function seed(): Promise<void> {
   const now = Date.now();
+
+  // ── Определения статусов лида (редактируемые) ───────────────────────────
+  await LeadStatusDef.create(DEFAULT_STATUS_DEFS);
 
   // ── Пользователи ────────────────────────────────────────────────────────
   const adminEmail = (process.env.ADMIN_EMAIL || "admin@leadhub.local").toLowerCase();

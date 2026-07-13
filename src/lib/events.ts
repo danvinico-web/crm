@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { LeadStatus, EventSource } from "@/lib/enums";
+import type { EventSource } from "@/lib/enums";
 
 /** Внутрипроцессная шина событий для real-time (SSE). Синглтон на globalThis. */
 const g = globalThis as unknown as { __leadhubBus?: EventEmitter };
@@ -9,7 +9,7 @@ bus.setMaxListeners(0);
 export interface LeadStatusChanged {
   type: "lead.status.changed";
   leadId: string;
-  status: LeadStatus;
+  status: string;
   rawStatus: string;
   source: EventSource;
   at: string;

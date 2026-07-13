@@ -8,12 +8,13 @@
  *
  * «Агент» — доменная сущность (член команды, обрабатывает лиды), а не аккаунт входа.
  */
-export const ROLES = ["ADMIN", "USER"] as const;
+export const ROLES = ["ADMIN", "USER", "AGENT"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Администратор",
   USER: "Пользователь",
+  AGENT: "Агент",
 };
 
 export function isRole(value: unknown): value is Role {

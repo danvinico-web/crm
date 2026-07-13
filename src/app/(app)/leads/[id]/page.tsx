@@ -4,8 +4,11 @@ import mongoose from "mongoose";
 import { ArrowLeft, Phone, Mail, MapPin, Tag } from "lucide-react";
 import { dbConnect } from "@/lib/db";
 import { Lead, Office, Agent, Source, StatusEvent, Delivery, Affiliate, LeadField, LeadNote } from "@/models";
+import { getSessionUser } from "@/lib/rbac";
+import { leadScopeFilter, withScope } from "@/lib/leadScope";
 import { decryptNullable } from "@/lib/crypto";
-import { LEAD_STATUS_BADGE, LEAD_STATUS_LABEL, type LeadStatus, type EventSource } from "@/lib/enums";
+import { statusLabelOf, statusBadgeOf, statusMetaMap, type EventSource } from "@/lib/enums";
+import { getStatusDefs } from "@/lib/statuses";
 import { avatarGradient, initials, codeToFlag, formatDate, formatMoney } from "@/lib/format";
 import LeadNotes, { type NoteItem } from "@/components/LeadNotes";
 
@@ -23,13 +26,17 @@ const DELIVERY_BADGE: Record<string, string> = {
 };
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
+  const me = await getSessionUser();
+  if (!me) notFound();
   if (!mongoose.isValidObjectId(params.id)) notFound();
   await dbConnect();
 
-  const lead = await Lead.findById(params.id).lean();
+  // Скоуп по роли: агент/пользователь не откроют чужой лид.
+  const scope = await leadScopeFilter(me);
+  const lead = await Lead.findOne(withScope({ _id: params.id }, scope)).lean();
   if (!lead) notFound();
 
-  const [office, agent, source, events, deliveries, affiliate, leadFields, noteDocs] = await Promise.all([
+  const [office, agent, source, events, deliveries, affiliate, leadFields, noteDocs, statusDefs] = await Promise.all([
     lead.office ? Office.findById(lead.office).lean() : null,
     lead.agent ? Agent.findById(lead.agent).lean() : null,
     lead.source ? Source.findById(lead.source).lean() : null,
@@ -38,7 +45,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
     lead.affiliateTag ? Affiliate.findOne({ tag: lead.affiliateTag }).lean() : null,
     LeadField.find().sort({ order: 1 }).lean(),
     LeadNote.find({ lead: lead._id }).sort({ createdAt: 1 }).lean(),
+    getStatusDefs(),
   ]);
+  const statusMeta = statusMetaMap(statusDefs);
 
   const fieldLabel = new Map(leadFields.map((f) => [f.key, f.label]));
   const customEntries = Object.entries((lead.custom as Record<string, string>) ?? {}).filter(([, v]) => v);
@@ -54,7 +63,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   const fullName = decryptNullable(lead.fullNameEnc) ?? "—";
   const email = decryptNullable(lead.emailEnc);
   const phone = decryptNullable(lead.phoneEnc);
-  const status = lead.status as LeadStatus;
+  const status = lead.status;
 
   return (
     <>
@@ -68,11 +77,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
             <div className="av-sm" style={{ width: 52, height: 52, fontSize: 18, background: avatarGradient(fullName) }}>{initials(fullName)}</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{fullName}</div>
-              <div style={{ marginTop: 4 }}><span className={`badge ${LEAD_STATUS_BADGE[status]}`}>{LEAD_STATUS_LABEL[status]}</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{fullName}</div>
+                {lead.refId && <span className="chip src mono" title="Номер лида для трекинга">#{lead.refId}</span>}
+              </div>
+              <div style={{ marginTop: 4 }}><span className={`badge ${statusBadgeOf(status, statusMeta)}`}>{statusLabelOf(status, statusMeta)}</span></div>
             </div>
-            <div className="bal" style={{ fontSize: 20, color: lead.balance ? "var(--green)" : "var(--text-dim)" }}>
-              {lead.balance ? formatMoney(lead.balance) : "$0"}
+            <div className="bal" style={{ fontSize: 20, color: lead.balance ? "var(--green)" : "var(--text)" }}>
+              {lead.balance ? formatMoney(lead.balance) : lead.balanceRaw ? lead.balanceRaw : <span style={{ color: "var(--text-dim)" }}>$0</span>}
             </div>
           </div>
           <div style={{ display: "grid", gap: 12 }}>
@@ -110,7 +122,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {events.length === 0 && <div className="muted" style={{ fontSize: 13 }}>Событий пока нет.</div>}
             {events.map((e, i) => {
-              const st = e.status as LeadStatus;
+              const st = e.status;
               return (
                 <div key={String(e._id)} style={{ display: "flex", gap: 12, paddingBottom: i === events.length - 1 ? 0 : 14, position: "relative" }}>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -119,7 +131,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span className={`badge ${LEAD_STATUS_BADGE[st]}`}>{LEAD_STATUS_LABEL[st]}</span>
+                      <span className={`badge ${statusBadgeOf(st, statusMeta)}`}>{statusLabelOf(st, statusMeta)}</span>
                       <span className="chip src">{EVENT_SOURCE_LABEL[e.source as EventSource]}</span>
                       {e.rawStatus && <span className="muted" style={{ fontSize: 12 }}>«{e.rawStatus}»</span>}
                     </div>

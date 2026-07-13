@@ -1,7 +1,8 @@
 import mongoose, { Schema, type Model, type Types } from "mongoose";
-import { LEAD_STATUSES, type LeadStatus, type SourceType } from "@/lib/enums";
+import { type SourceType } from "@/lib/enums";
 import { encrypt, decryptNullable, encryptNullable, blindIndex, blindIndexNullable } from "@/lib/crypto";
 import { normalizeEmail, normalizePhone } from "@/lib/normalize";
+import { nextLeadRef } from "@/lib/refId";
 
 /** Слепые индексы токенов имени — для поиска по имени без расшифровки (точное слово). */
 export function nameTokens(fullName: string): string[] {
@@ -16,6 +17,7 @@ export interface ILeadConsent {
 
 export interface ILead {
   _id: Types.ObjectId;
+  refId?: number; // человекочитаемый 6-значный номер для быстрого поиска/трекинга
   // PII — шифруется at rest
   fullNameEnc: string;
   emailEnc?: string;
@@ -28,7 +30,8 @@ export interface ILead {
   // Операционные (незашифрованные — нужны для фильтров/аналитики)
   geo?: string;
   affiliateTag?: string;
-  balance: number;
+  balance: number; // числовой депозит (FTD) — для аналитики/фильтров
+  balanceRaw?: string; // задекларированный/импортированный баланс как есть («$1000-10,000»)
   comment?: string;
   custom?: Record<string, string>; // кастомные поля клиента (воронка, реклама и т.п.)
   // Связи
@@ -36,8 +39,8 @@ export interface ILead {
   sourceType?: SourceType;
   office?: Types.ObjectId | null;
   agent?: Types.ObjectId | null;
-  // Состояние
-  status: LeadStatus;
+  // Состояние (статусы редактируемы — произвольный ключ из LeadStatusDef)
+  status: string;
   externalId?: string;
   sentAt?: Date | null;
   consent?: ILeadConsent;
@@ -77,6 +80,7 @@ const ConsentSchema = new Schema<ILeadConsent>(
 
 const LeadSchema = new Schema<ILead, ILeadModel, ILeadMethods>(
   {
+    refId: { type: Number, unique: true, sparse: true, index: true },
     fullNameEnc: { type: String, required: true },
     emailEnc: { type: String },
     phoneEnc: { type: String },
@@ -87,13 +91,14 @@ const LeadSchema = new Schema<ILead, ILeadModel, ILeadMethods>(
     geo: { type: String, index: true },
     affiliateTag: { type: String, index: true },
     balance: { type: Number, default: 0 },
+    balanceRaw: { type: String },
     comment: { type: String },
     custom: { type: Schema.Types.Mixed, default: {} },
     source: { type: Schema.Types.ObjectId, ref: "Source", default: null },
     sourceType: { type: String },
     office: { type: Schema.Types.ObjectId, ref: "Office", default: null, index: true },
     agent: { type: Schema.Types.ObjectId, ref: "Agent", default: null, index: true },
-    status: { type: String, enum: LEAD_STATUSES, default: "NEW", index: true },
+    status: { type: String, default: "NEW", index: true },
     externalId: { type: String, index: true },
     sentAt: { type: Date, default: null, index: true },
     consent: { type: ConsentSchema },
@@ -103,6 +108,13 @@ const LeadSchema = new Schema<ILead, ILeadModel, ILeadMethods>(
 
 LeadSchema.index({ createdAt: -1 });
 LeadSchema.index({ office: 1, sentAt: 1 });
+
+// Присваиваем 6-значный номер один раз при создании лида (любой путь приёма).
+LeadSchema.pre("save", async function (this: ILead & { isNew: boolean }) {
+  if (this.isNew && this.refId == null) {
+    this.refId = await nextLeadRef();
+  }
+});
 
 LeadSchema.methods.contact = function (this: ILead): ILeadContact {
   return {

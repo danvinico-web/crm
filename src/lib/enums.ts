@@ -100,3 +100,56 @@ export const API_TYPE_LABEL: Record<ApiType, string> = {
 
 export const EVENT_SOURCES = ["CALLBACK", "POLL", "MANUAL", "SYSTEM"] as const;
 export type EventSource = (typeof EVENT_SOURCES)[number];
+
+/**
+ * Определение статуса лида — клиентобезопасный тип. Статусы теперь редактируемы
+ * и хранятся в БД (LeadStatusDef); enum выше остаётся дефолтным набором и фолбэком.
+ */
+export interface StatusDef {
+  key: string;
+  label: string;
+  badge: string; // класс бейджа (b-new/b-work/b-sent/b-dep/b-rej/b-off)
+  order: number;
+  active: boolean; // выключенные не показываются в фильтрах/пикерах, но остаются на старых лидах
+  isTerminal: boolean; // терминальные не опрашиваются дальше
+  isSystem: boolean; // встроенные нельзя удалять (только переименовать/скрыть)
+}
+
+/** Дефолтные определения статусов из enum — сид БД и клиентский фолбэк. */
+export const DEFAULT_STATUS_DEFS: StatusDef[] = LEAD_STATUSES.map((k, i) => ({
+  key: k,
+  label: LEAD_STATUS_LABEL[k],
+  badge: LEAD_STATUS_BADGE[k],
+  order: i,
+  active: true,
+  isTerminal: TERMINAL_LEAD_STATUSES.includes(k),
+  isSystem: true,
+}));
+
+/** Доступные классы бейджей для выбора цвета кастомного статуса. */
+export const STATUS_BADGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "b-new", label: "Синий" },
+  { value: "b-sent", label: "Фиолетовый" },
+  { value: "b-work", label: "Оранжевый" },
+  { value: "b-dep", label: "Зелёный" },
+  { value: "b-rej", label: "Красный" },
+  { value: "b-off", label: "Серый" },
+];
+
+/** Подпись статуса из карты определений с фолбэком на дефолт/ключ. */
+export function statusLabelOf(key: string, meta?: Record<string, StatusDef>): string {
+  return meta?.[key]?.label ?? LEAD_STATUS_LABEL[key as LeadStatus] ?? key;
+}
+
+/** Класс бейджа статуса из карты определений с фолбэком. */
+export function statusBadgeOf(key: string, meta?: Record<string, StatusDef>): string {
+  return meta?.[key]?.badge ?? LEAD_STATUS_BADGE[key as LeadStatus] ?? "b-off";
+}
+
+/** Строит карту key→StatusDef, дополняя дефолтами (для устойчивого рендера). */
+export function statusMetaMap(defs: StatusDef[] | undefined): Record<string, StatusDef> {
+  const map: Record<string, StatusDef> = {};
+  for (const d of DEFAULT_STATUS_DEFS) map[d.key] = d;
+  for (const d of defs ?? []) map[d.key] = d;
+  return map;
+}

@@ -1,32 +1,51 @@
 import mongoose from "mongoose";
 import { blindIndex } from "@/lib/crypto";
 import { normalizeEmail, normalizePhone } from "@/lib/normalize";
-import { LEAD_STATUSES } from "@/lib/enums";
+
+/** Разбивает мульти-значение фильтра ("NEW,CALLBACK") на непустые части. */
+function multi(sp: URLSearchParams, key: string): string[] {
+  const raw = sp.get(key);
+  if (!raw) return [];
+  return [...new Set(raw.split(",").map((v) => v.trim()).filter(Boolean))];
+}
+
+/** Условие равенства/принадлежности: одно значение → eq, несколько → $in. */
+function eqOrIn<T>(values: T[]): T | { $in: T[] } | undefined {
+  if (values.length === 0) return undefined;
+  return values.length === 1 ? values[0] : { $in: values };
+}
 
 /**
  * Строит Mongo-фильтр лидов из query-параметров. Используется списком лидов
- * и экспортом, чтобы фильтрация была единообразной.
+ * и экспортом, чтобы фильтрация была единообразной. Категориальные фильтры
+ * (status/tag/geo/agent/office) поддерживают мультивыбор через запятую.
  * Параметры: q, status, tag, agent, geo, balance(=deposit), from, to.
  */
 export function buildLeadFilter(sp: URLSearchParams): Record<string, unknown> {
   const filter: Record<string, unknown> = {};
 
-  const status = sp.get("status");
-  if (status && (LEAD_STATUSES as readonly string[]).includes(status)) filter.status = status;
+  const statuses = multi(sp, "status");
+  const statusCond = eqOrIn(statuses);
+  if (statusCond !== undefined) filter.status = statusCond;
 
-  const tag = sp.get("tag");
-  if (tag) filter.affiliateTag = tag;
+  const tagCond = eqOrIn(multi(sp, "tag"));
+  if (tagCond !== undefined) filter.affiliateTag = tagCond;
 
-  const geo = sp.get("geo");
-  if (geo) filter.geo = geo.toUpperCase();
+  const geoCond = eqOrIn(multi(sp, "geo").map((g) => g.toUpperCase()));
+  if (geoCond !== undefined) filter.geo = geoCond;
 
-  const agent = sp.get("agent");
-  if (agent === "none") filter.agent = null;
-  else if (agent && mongoose.isValidObjectId(agent)) filter.agent = new mongoose.Types.ObjectId(agent);
+  // Агенты/офисы: "none" → null (без назначения), иначе ObjectId.
+  const agentVals = multi(sp, "agent")
+    .map((a) => (a === "none" ? null : mongoose.isValidObjectId(a) ? new mongoose.Types.ObjectId(a) : undefined))
+    .filter((v) => v !== undefined) as (mongoose.Types.ObjectId | null)[];
+  const agentCond = eqOrIn(agentVals);
+  if (agentCond !== undefined) filter.agent = agentCond;
 
-  const office = sp.get("office");
-  if (office === "none") filter.office = null;
-  else if (office && mongoose.isValidObjectId(office)) filter.office = new mongoose.Types.ObjectId(office);
+  const officeVals = multi(sp, "office")
+    .map((o) => (o === "none" ? null : mongoose.isValidObjectId(o) ? new mongoose.Types.ObjectId(o) : undefined))
+    .filter((v) => v !== undefined) as (mongoose.Types.ObjectId | null)[];
+  const officeCond = eqOrIn(officeVals);
+  if (officeCond !== undefined) filter.office = officeCond;
 
   if (sp.get("balance") === "deposit") filter.balance = { $gt: 0 };
 
@@ -47,6 +66,8 @@ export function buildLeadFilter(sp: URLSearchParams): Record<string, unknown> {
       { externalId: { $regex: escaped, $options: "i" } },
       { geo: { $regex: `^${escaped}$`, $options: "i" } },
     ];
+    // Поиск по 6-значному номеру лида (точное совпадение) — быстрый трекинг.
+    if (/^\d{1,6}$/.test(q)) or.push({ refId: Number(q) });
     // Поиск по имени — по слепым индексам токенов (точное слово, напр. «Carlos»).
     const tokens = [...new Set(q.toLowerCase().split(/\s+/).filter((t) => t.length >= 2))];
     if (tokens.length) or.push({ nameTokensHash: { $in: tokens.map((t) => blindIndex(t)) } });

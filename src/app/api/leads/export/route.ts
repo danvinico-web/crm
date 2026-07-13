@@ -1,6 +1,7 @@
 import { dbConnect } from "@/lib/db";
 import { Lead, Office } from "@/models";
 import { getSessionUser } from "@/lib/rbac";
+import { leadScopeFilter, withScope } from "@/lib/leadScope";
 import { decryptNullable } from "@/lib/crypto";
 import { buildLeadFilter } from "@/lib/leadQuery";
 import { LEAD_STATUS_LABEL, type LeadStatus } from "@/lib/enums";
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
   if (!user) return new Response("Unauthorized", { status: 401 });
 
   await dbConnect();
-  const filter = buildLeadFilter(new URL(req.url).searchParams);
+  const filter = withScope(buildLeadFilter(new URL(req.url).searchParams), await leadScopeFilter(user));
   const [leads, offices] = await Promise.all([
     Lead.find(filter).sort({ createdAt: -1 }).limit(10000).lean(),
     Office.find().lean(),

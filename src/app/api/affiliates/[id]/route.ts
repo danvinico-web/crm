@@ -2,7 +2,7 @@ import { z } from "zod";
 import mongoose from "mongoose";
 import { dbConnect } from "@/lib/db";
 import { Affiliate, AuditLog } from "@/models";
-import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
+import { apiHandler, requireRoles, HttpError } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   return apiHandler(async () => {
-    const me = await requireUser();
+    const me = await requireRoles(["ADMIN", "USER"]);
     if (!mongoose.isValidObjectId(params.id)) throw new HttpError(404, "Аффилиат не найден");
     const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) throw new HttpError(422, parsed.error.issues[0]?.message ?? "Неверные данные");
@@ -40,7 +40,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   return apiHandler(async () => {
-    const me = await requireUser();
+    const me = await requireRoles(["ADMIN", "USER"]);
     if (!mongoose.isValidObjectId(params.id)) throw new HttpError(404, "Аффилиат не найден");
     await dbConnect();
     const aff = await Affiliate.findByIdAndDelete(params.id);

@@ -33,26 +33,26 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Основное",
     items: [
-      { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard },
+      { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard, roles: ["ADMIN"] },
       { href: "/leads", label: "Лиды", icon: Users },
-      { href: "/agents", label: "Агенты", icon: UserCog },
-      { href: "/affiliates", label: "Аффилиаты", icon: Share2 },
+      { href: "/agents", label: "Агенты", icon: UserCog, roles: ["ADMIN", "USER"] },
+      { href: "/affiliates", label: "Аффилиаты", icon: Share2, roles: ["ADMIN", "USER"] },
     ],
   },
   {
     label: "Дистрибуция",
     items: [
-      { href: "/distribution", label: "Отправка в офисы", icon: Send },
-      { href: "/import", label: "Импорт лидов", icon: Download },
-      { href: "/reports", label: "Отчёты", icon: BarChart3 },
+      { href: "/distribution", label: "Отправка в офисы", icon: Send, roles: ["ADMIN"] },
+      { href: "/import", label: "Импорт лидов", icon: Download, roles: ["ADMIN"] },
+      { href: "/reports", label: "Отчёты", icon: BarChart3, roles: ["ADMIN"] },
     ],
   },
   {
     label: "Система",
     items: [
-      { href: "/teams", label: "Команды", icon: UsersRound },
+      { href: "/teams", label: "Команды", icon: UsersRound, roles: ["ADMIN", "USER"] },
       { href: "/users", label: "Пользователи", icon: ShieldCheck, roles: ["ADMIN"] },
-      { href: "/settings", label: "Настройки", icon: Settings },
+      { href: "/settings", label: "Настройки", icon: Settings, roles: ["ADMIN", "USER"] },
     ],
   },
 ];

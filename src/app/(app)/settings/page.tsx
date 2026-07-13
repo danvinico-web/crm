@@ -1,19 +1,27 @@
 import { Sliders, ShieldCheck, GitBranch } from "lucide-react";
 import { dbConnect } from "@/lib/db";
 import { Integration, AuditLog, User } from "@/models";
-import { getSessionUser } from "@/lib/rbac";
-import { LEAD_STATUS_LABEL, type LeadStatus } from "@/lib/enums";
+import { getSessionUser, requirePageRole } from "@/lib/rbac";
+import { statusLabelOf, statusMetaMap } from "@/lib/enums";
+import { getLoadConfig } from "@/lib/settings";
+import { getStatusDefs } from "@/lib/statuses";
 import LeadFieldsManager from "@/components/LeadFieldsManager";
+import LoadSettings from "@/components/LoadSettings";
+import StatusManager from "@/components/StatusManager";
 
 export const dynamic = "force-dynamic";
 
 const LEAD_FIELDS = ["Имя", "Email", "Телефон", "Гео", "Метка аффилиата", "Баланс", "Комментарий", "Статус", "Внешний ID"];
 
 export default async function SettingsPage() {
+  await requirePageRole(["ADMIN", "USER"]);
   const me = await getSessionUser();
   const isAdmin = me?.role === "ADMIN";
 
   await dbConnect();
+  const loadConfig = await getLoadConfig();
+  const statusDefs = await getStatusDefs();
+  const statusMeta = statusMetaMap(statusDefs);
   const integration = await Integration.findOne({ statusMappings: { $ne: [] } }).lean();
   const auditRaw = isAdmin ? await AuditLog.find().sort({ createdAt: -1 }).limit(15).lean() : [];
   const userIds = [...new Set(auditRaw.map((a) => String(a.user)))];
@@ -43,6 +51,16 @@ export default async function SettingsPage() {
       </div>
 
       <div style={{ marginBottom: 16 }}>
+        <StatusManager initial={statusDefs} />
+      </div>
+
+      {isAdmin && (
+        <div style={{ marginBottom: 16 }}>
+          <LoadSettings initialStatuses={loadConfig.loadStatuses} initialCapacity={loadConfig.loadCapacity} statusDefs={statusDefs} />
+        </div>
+      )}
+
+      <div style={{ marginBottom: 16 }}>
         <LeadFieldsManager />
       </div>
 
@@ -56,7 +74,7 @@ export default async function SettingsPage() {
                 {(integration?.statusMappings ?? []).map((m, i) => (
                   <tr key={i}>
                     <td className="mono muted">{m.externalValue}</td>
-                    <td>{LEAD_STATUS_LABEL[m.internalValue as LeadStatus]}</td>
+                    <td>{statusLabelOf(m.internalValue, statusMeta)}</td>
                   </tr>
                 ))}
                 {(!integration || integration.statusMappings.length === 0) && (

@@ -9,6 +9,7 @@ export interface IUser {
   role: Role;
   isActive: boolean;
   createdBy?: Types.ObjectId | null; // админ, создавший пользователя
+  agent?: Types.ObjectId | null; // для роли AGENT — связанная доменная запись агента
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +22,7 @@ const UserSchema = new Schema<IUser>(
     role: { type: String, enum: ROLES, default: "USER" },
     isActive: { type: Boolean, default: true },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    agent: { type: Schema.Types.ObjectId, ref: "Agent", default: null },
   },
   { timestamps: true },
 );

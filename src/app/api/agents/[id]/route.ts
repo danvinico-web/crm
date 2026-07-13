@@ -11,6 +11,7 @@ const patchSchema = z.object({
   title: z.string().trim().optional(),
   isOnline: z.boolean().optional(),
   teamId: z.string().nullable().optional(),
+  ownerId: z.string().optional(),
   capacity: z.number().int().min(1).max(1000).optional(),
 });
 
@@ -29,6 +30,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (d.isOnline !== undefined) agent.isOnline = d.isOnline;
     if (d.capacity !== undefined) agent.capacity = d.capacity;
     if (d.teamId !== undefined) agent.team = d.teamId && mongoose.isValidObjectId(d.teamId) ? (d.teamId as unknown as typeof agent.team) : null;
+    if (d.ownerId !== undefined && mongoose.isValidObjectId(d.ownerId)) agent.owner = d.ownerId as unknown as typeof agent.owner;
     await agent.save();
     await AuditLog.create({ user: me.id, action: "agent.update", entity: "Agent", entityId: params.id });
     return { ok: true };

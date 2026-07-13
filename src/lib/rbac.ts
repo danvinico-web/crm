@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import type { Role } from "@/lib/roles";
 
@@ -34,6 +35,24 @@ export async function requireUser(): Promise<SessionUser> {
 export async function requireAdmin(): Promise<SessionUser> {
   const user = await requireUser();
   if (user.role !== "ADMIN") throw new HttpError(403, "Требуется роль администратора");
+  return user;
+}
+
+/** API-гард: пускает только перечисленные роли, иначе 403. */
+export async function requireRoles(allowed: Role[]): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!allowed.includes(user.role)) throw new HttpError(403, "Недостаточно прав");
+  return user;
+}
+
+/**
+ * Гард для серверных страниц: пускает только разрешённые роли, иначе редиректит.
+ * Неавторизованных — на /login, остальных — на /leads (доступно всем ролям).
+ */
+export async function requirePageRole(allowed: Role[]): Promise<SessionUser> {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  if (!allowed.includes(user.role)) redirect("/leads");
   return user;
 }
 

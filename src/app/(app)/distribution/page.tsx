@@ -1,4 +1,5 @@
 import { dbConnect } from "@/lib/db";
+import { requirePageRole } from "@/lib/rbac";
 import { Office, Integration, Delivery, Lead } from "@/models";
 import { decryptNullable } from "@/lib/crypto";
 import { API_TYPE_LABEL } from "@/lib/enums";
@@ -8,6 +9,7 @@ import DistributionTabs, { type OfficeCard, type LogRow } from "@/components/Dis
 export const dynamic = "force-dynamic";
 
 export default async function DistributionPage() {
+  await requirePageRole(["ADMIN"]);
   await dbConnect();
 
   const [offices, integrations, summary] = await Promise.all([

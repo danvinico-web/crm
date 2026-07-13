@@ -3,7 +3,7 @@ import Lead from "@/models/Lead";
 import Integration from "@/models/Integration";
 import { applyStatusUpdate } from "@/lib/statusSync";
 import { subscriberCount } from "@/lib/events";
-import { ACTIVE_LEAD_STATUSES, type LeadStatus } from "@/lib/enums";
+import { ACTIVE_LEAD_STATUSES } from "@/lib/enums";
 
 /**
  * Демо-поллер: имитирует поток изменений статусов из внешней CRM, чтобы показать
@@ -19,7 +19,7 @@ const NEXT_RAW: Record<string, string[]> = {
   IN_PROGRESS: ["deposit", "call back", "not interested"],
 };
 
-function pickRaw(status: LeadStatus): string | null {
+function pickRaw(status: string): string | null {
   const opts = NEXT_RAW[status];
   if (!opts || opts.length === 0) return null;
   return opts[Math.floor(Math.random() * opts.length)];

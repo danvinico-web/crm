@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import mongoose from "mongoose";
 import { ArrowLeft, Send, DollarSign, Flame, TrendingUp } from "lucide-react";
 import { dbConnect } from "@/lib/db";
-import { Office, Integration, Lead, Agent } from "@/models";
+import { Office, Integration, Lead, Agent, LeadField } from "@/models";
 import { officeSummaryMap, emptyOfficeSummary } from "@/lib/officeStats";
 import { leadToView, type OfficeMeta, type LeadLike } from "@/lib/leadView";
 import { buildLeadFilter } from "@/lib/leadQuery";
-import { API_TYPE_LABEL, LEAD_STATUSES, LEAD_STATUS_LABEL, LEAD_STATUS_BADGE, type LeadStatus } from "@/lib/enums";
+import { getStatusDefs } from "@/lib/statuses";
+import { requirePageRole } from "@/lib/rbac";
+import { API_TYPE_LABEL, statusLabelOf, statusBadgeOf, statusMetaMap } from "@/lib/enums";
 import AreaChart from "@/components/AreaChart";
 import LeadsTable from "@/components/LeadsTable";
 import LeadsFilters, { type LeadFilterState } from "@/components/LeadsFilters";
@@ -23,6 +25,7 @@ export default async function OfficeDetailPage({
   params: { officeId: string };
   searchParams: Record<string, string | string[] | undefined>;
 }) {
+  await requirePageRole(["ADMIN"]);
   if (!mongoose.isValidObjectId(params.officeId)) notFound();
   await dbConnect();
 
@@ -39,7 +42,7 @@ export default async function OfficeDetailPage({
   sp.set("office", officeId);
   const tableFilter = buildLeadFilter(sp);
 
-  const [integration, summaryMap, statusDistRaw, byDayRaw, total, leadDocs, agents, tagsRaw, geosRaw] = await Promise.all([
+  const [integration, summaryMap, statusDistRaw, byDayRaw, total, leadDocs, agents, tagsRaw, geosRaw, statusDefs, leadFields] = await Promise.all([
     Integration.findOne({ office: office._id }).lean(),
     officeSummaryMap(),
     Lead.aggregate<{ _id: string; n: number }>([{ $match: officeOnly }, { $group: { _id: "$status", n: { $sum: 1 } } }]),
@@ -53,7 +56,10 @@ export default async function OfficeDetailPage({
     Agent.find().select("name").lean(),
     Lead.distinct("affiliateTag", officeOnly),
     Lead.distinct("geo", officeOnly),
+    getStatusDefs(),
+    LeadField.find().sort({ order: 1 }).lean(),
   ]);
+  const customFields = leadFields.map((f) => ({ key: f.key, label: f.label }));
 
   const s = summaryMap.get(officeId) ?? emptyOfficeSummary();
   const officeMap = new Map<string, OfficeMeta>([[officeId, { name: office.name, color: office.color }]]);
@@ -72,10 +78,11 @@ export default async function OfficeDetailPage({
   };
   const filterQuery = sp.toString(); // включает office=<id> → для пагинации и «выбрать все»
 
+  const statusMeta = statusMetaMap(statusDefs);
   const dist: Record<string, number> = {};
-  for (const st of LEAD_STATUSES) dist[st] = 0;
-  for (const row of statusDistRaw) dist[row._id as LeadStatus] = row.n;
-  const distRows = (Object.entries(dist) as [LeadStatus, number][]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  for (const st of statusDefs) dist[st.key] = 0;
+  for (const row of statusDistRaw) dist[row._id] = (dist[row._id] ?? 0) + row.n;
+  const distRows = (Object.entries(dist) as [string, number][]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
   const distMax = Math.max(1, ...distRows.map(([, n]) => n));
 
   const days: string[] = [];
@@ -129,9 +136,9 @@ export default async function OfficeDetailPage({
           {distRows.length === 0 && <div className="muted" style={{ fontSize: 13 }}>Лидов в этом офисе нет.</div>}
           {distRows.map(([st, n]) => (
             <div className="funnel-row" key={st}>
-              <div className="fl">{LEAD_STATUS_LABEL[st]}</div>
+              <div className="fl">{statusLabelOf(st, statusMeta)}</div>
               <div className="funnel-bar">
-                <span className={`badge ${LEAD_STATUS_BADGE[st]}`} style={{ width: `${Math.max(8, (n / distMax) * 100)}%`, background: "var(--surface-3)", borderRadius: 7, color: "var(--text)" }}>{n}</span>
+                <span className={`badge ${statusBadgeOf(st, statusMeta)}`} style={{ width: `${Math.max(8, (n / distMax) * 100)}%`, background: "var(--surface-3)", borderRadius: 7, color: "var(--text)" }}>{n}</span>
               </div>
             </div>
           ))}
@@ -141,6 +148,7 @@ export default async function OfficeDetailPage({
       <div className="section-title">Лиды, отправленные в {office.name} · live-статусы</div>
       <LeadsFilters
         current={current}
+        statuses={statusDefs.filter((st) => st.active)}
         tags={(tagsRaw as (string | null)[]).filter(Boolean).sort() as string[]}
         agents={agents.map((a) => ({ id: String(a._id), name: a.name }))}
         offices={[]}
@@ -149,7 +157,7 @@ export default async function OfficeDetailPage({
         basePath={`/distribution/${officeId}`}
         hideOffice
       />
-      <LeadsTable leads={views} total={total} page={page} pageSize={PAGE_SIZE} query={filterQuery} basePath={`/distribution/${officeId}`} />
+      <LeadsTable leads={views} total={total} page={page} pageSize={PAGE_SIZE} query={filterQuery} basePath={`/distribution/${officeId}`} statuses={statusDefs} customFields={customFields} />
     </>
   );
 }

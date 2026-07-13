@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { dbConnect } from "@/lib/db";
 import { Lead, Delivery, Office } from "@/models";
-import { apiHandler, requireUser } from "@/lib/rbac";
+import { apiHandler, requireAdmin } from "@/lib/rbac";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/enums";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ function parseDate(s: string | null, fallback: Date, endOfDay = false): Date {
  */
 export async function GET(req: Request) {
   return apiHandler(async () => {
-    await requireUser();
+    await requireAdmin();
     await dbConnect();
 
     const url = new URL(req.url);

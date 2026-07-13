@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { dbConnect } from "@/lib/db";
 import { Lead, Agent, AuditLog } from "@/models";
 import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
+import { leadScopeFilter, withScope } from "@/lib/leadScope";
 import { resolveLeadFilter } from "@/lib/bulk";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
       if (!exists) throw new HttpError(404, "Агент не найден");
     }
 
-    const filter = resolveLeadFilter(parsed.data);
+    const filter = withScope(resolveLeadFilter(parsed.data), await leadScopeFilter(me));
     const res = await Lead.updateMany(filter, { $set: { agent: agentId } });
     await AuditLog.create({ user: me.id, action: "lead.assign", entity: "Lead", meta: { count: res.modifiedCount, agentId } });
     return { ok: true, updated: res.modifiedCount };

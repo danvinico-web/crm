@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function TeamsPage() {
   const me = await getSessionUser();
   if (!me) redirect("/login");
+  if (me.role === "AGENT") redirect("/leads");
 
   await dbConnect();
   const filter = me.role === "ADMIN" ? {} : { owner: me.id };

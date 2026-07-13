@@ -1,6 +1,7 @@
 import { Users, Send, DollarSign, TrendingUp, Check, ArrowUp, ArrowDownToLine, AlertTriangle } from "lucide-react";
 import AreaChart from "@/components/AreaChart";
 import { dbConnect } from "@/lib/db";
+import { requirePageRole } from "@/lib/rbac";
 import { Lead, Affiliate, StatusEvent } from "@/models";
 import { decryptNullable } from "@/lib/crypto";
 import { formatMoney } from "@/lib/format";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 const DAY = 86_400_000;
 
 export default async function DashboardPage() {
+  await requirePageRole(["ADMIN"]);
   await dbConnect();
 
   const [total, sent, deposits, depositAgg, dupCount, inWork, byDayRaw, affAgg, affiliates, recentEvents] =

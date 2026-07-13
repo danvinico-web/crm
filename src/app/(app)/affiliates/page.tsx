@@ -1,10 +1,12 @@
 import { dbConnect } from "@/lib/db";
+import { requirePageRole } from "@/lib/rbac";
 import { Affiliate, Lead, Payout } from "@/models";
 import AffiliatesManager, { type AffiliateRow } from "@/components/AffiliatesManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function AffiliatesPage() {
+  await requirePageRole(["ADMIN", "USER"]);
   await dbConnect();
 
   const [affiliates, stats, paidAgg] = await Promise.all([

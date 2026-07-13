@@ -3,8 +3,8 @@ import { dbConnect } from "@/lib/db";
 import { Lead, StatusEvent, AuditLog, LeadNote } from "@/models";
 import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
 import { decryptNullable } from "@/lib/crypto";
+import { leadScopeFilter, withScope } from "@/lib/leadScope";
 import { normalizeEmail, normalizePhone, isValidEmail } from "@/lib/normalize";
-import { LEAD_STATUSES, type LeadStatus } from "@/lib/enums";
 
 export const dynamic = "force-dynamic";
 
@@ -55,16 +55,15 @@ export async function POST(req: Request) {
 /** Компактный список лидов (id, статус, имя). Поддерживает ?status= и ?limit=. */
 export async function GET(req: Request) {
   return apiHandler(async () => {
-    await requireUser();
+    const me = await requireUser();
     await dbConnect();
     const url = new URL(req.url);
     const statusParam = url.searchParams.get("status");
     const limit = Math.min(200, parseInt(url.searchParams.get("limit") ?? "50", 10) || 50);
 
-    const filter: Record<string, unknown> = {};
-    if (statusParam && (LEAD_STATUSES as readonly string[]).includes(statusParam)) {
-      filter.status = statusParam as LeadStatus;
-    }
+    const base: Record<string, unknown> = {};
+    if (statusParam) base.status = statusParam;
+    const filter = withScope(base, await leadScopeFilter(me));
 
     const docs = await Lead.find(filter).sort({ createdAt: -1 }).limit(limit).select("fullNameEnc status office externalId sentAt").lean();
     return {

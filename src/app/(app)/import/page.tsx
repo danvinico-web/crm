@@ -1,6 +1,6 @@
 import { dbConnect } from "@/lib/db";
 import { Source } from "@/models";
-import { getSessionUser } from "@/lib/rbac";
+import { getSessionUser, requirePageRole } from "@/lib/rbac";
 import { decryptNullable } from "@/lib/crypto";
 import { SOURCE_TYPE_LABEL, type SourceType } from "@/lib/enums";
 import CsvImport from "@/components/CsvImport";
@@ -18,6 +18,7 @@ export interface SourceLite {
 }
 
 export default async function ImportPage() {
+  await requirePageRole(["ADMIN"]);
   const me = await getSessionUser();
   const isAdmin = me?.role === "ADMIN";
 

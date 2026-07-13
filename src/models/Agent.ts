@@ -7,6 +7,7 @@ export interface IAgent {
   title: string; // «Team Lead», «Retention», «Sales agent»
   team?: Types.ObjectId | null;
   owner: Types.ObjectId; // пользователь-владелец
+  user?: Types.ObjectId | null; // аккаунт входа агента (роль AGENT), если создан с паролем
   isOnline: boolean;
   color: string; // градиент для аватара, напр. "#4f7cff,#6a5cff"
   capacity: number; // сколько лидов агент может вести (ёмкость) — база для «нагрузки»
@@ -20,6 +21,7 @@ const AgentSchema = new Schema<IAgent>(
     title: { type: String, default: "Sales agent" },
     team: { type: Schema.Types.ObjectId, ref: "Team", default: null, index: true },
     owner: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    user: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
     isOnline: { type: Boolean, default: false },
     color: { type: String, default: "#4f7cff,#6a5cff" },
     capacity: { type: Number, default: 12 },

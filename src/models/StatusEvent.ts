@@ -1,5 +1,5 @@
 import mongoose, { Schema, type Model, type Types } from "mongoose";
-import { EVENT_SOURCES, type EventSource, LEAD_STATUSES, type LeadStatus } from "@/lib/enums";
+import { EVENT_SOURCES, type EventSource } from "@/lib/enums";
 
 /** Событие изменения статуса лида (история + источник real-time апдейтов). */
 export interface IStatusEvent {
@@ -7,7 +7,7 @@ export interface IStatusEvent {
   lead: Types.ObjectId;
   integration?: Types.ObjectId | null;
   rawStatus: string; // как прислала внешняя CRM
-  status: LeadStatus; // нормализованный
+  status: string; // нормализованный ключ статуса
   source: EventSource;
   note?: string;
   payload?: unknown;
@@ -18,7 +18,7 @@ const StatusEventSchema = new Schema<IStatusEvent>({
   lead: { type: Schema.Types.ObjectId, ref: "Lead", required: true, index: true },
   integration: { type: Schema.Types.ObjectId, ref: "Integration", default: null },
   rawStatus: { type: String, default: "" },
-  status: { type: String, enum: LEAD_STATUSES, required: true },
+  status: { type: String, required: true },
   source: { type: String, enum: EVENT_SOURCES, default: "CALLBACK" },
   note: { type: String },
   payload: { type: Schema.Types.Mixed },

@@ -22,7 +22,7 @@ export default function LoginPage() {
       setError("Неверный email или пароль.");
       return;
     }
-    router.push("/dashboard");
+    router.push("/");
     router.refresh();
   }
 

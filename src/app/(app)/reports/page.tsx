@@ -1,8 +1,10 @@
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
+import { requirePageRole } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  await requirePageRole(["ADMIN"]);
   return (
     <>
       <div className="section-head">

@@ -2,7 +2,7 @@ import { z } from "zod";
 import mongoose from "mongoose";
 import { dbConnect } from "@/lib/db";
 import { Lead, AuditLog } from "@/models";
-import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
+import { apiHandler, requireAdmin, HttpError } from "@/lib/rbac";
 import { sendLeadsToOffice } from "@/lib/injection";
 import { resolveLeadFilter } from "@/lib/bulk";
 
@@ -20,7 +20,7 @@ const schema = z.object({
 /** Отгрузка лидов в офис — по списку или по всему фильтру (до 500 за раз). */
 export async function POST(req: Request) {
   return apiHandler(async () => {
-    const me = await requireUser();
+    const me = await requireAdmin();
     const body = await req.json().catch(() => ({}));
     const parsed = schema.safeParse(body);
     if (!parsed.success) throw new HttpError(422, parsed.error.issues[0]?.message ?? "Неверные данные");

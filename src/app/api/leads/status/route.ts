@@ -2,7 +2,8 @@ import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Lead, StatusEvent, AuditLog } from "@/models";
 import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
-import { LEAD_STATUSES } from "@/lib/enums";
+import { getStatusKeys } from "@/lib/statuses";
+import { leadScopeFilter, withScope } from "@/lib/leadScope";
 import { publishLeadStatus } from "@/lib/events";
 import { resolveLeadFilter } from "@/lib/bulk";
 
@@ -12,7 +13,7 @@ const schema = z.object({
   leadIds: z.array(z.string()).optional(),
   allMatching: z.boolean().optional(),
   filter: z.string().optional(),
-  status: z.enum(LEAD_STATUSES),
+  status: z.string().min(1),
 });
 
 /** Массовая смена статуса — по списку или по всему фильтру. */
@@ -25,7 +26,9 @@ export async function POST(req: Request) {
 
     await dbConnect();
     const { status } = parsed.data;
-    const filter = resolveLeadFilter(parsed.data);
+    const keys = await getStatusKeys();
+    if (!keys.has(status)) throw new HttpError(422, "Неизвестный статус");
+    const filter = withScope(resolveLeadFilter(parsed.data), await leadScopeFilter(me));
 
     const leads = await Lead.find(filter).select("_id").lean();
     const ids = leads.map((l) => l._id);
