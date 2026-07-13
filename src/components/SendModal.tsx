@@ -6,16 +6,16 @@ import { X, Send } from "lucide-react";
 import type { OfficeLite } from "@/app/api/offices/route";
 
 type Props = {
-  leadIds: string[];
+  selection: { body: Record<string, unknown>; count: number };
   onClose: () => void;
 };
 
-export default function SendModal({ leadIds, onClose }: Props) {
+export default function SendModal({ selection, onClose }: Props) {
   const router = useRouter();
   const [offices, setOffices] = useState<OfficeLite[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ sent: number; failed: number } | null>(null);
+  const [result, setResult] = useState<{ sent: number; failed: number; capped?: boolean; cap?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function SendModal({ leadIds, onClose }: Props) {
     const res = await fetch("/api/leads/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ leadIds, officeId: selected }),
+      body: JSON.stringify({ ...selection.body, officeId: selected }),
     });
     const data = await res.json().catch(() => ({}));
     setSending(false);
@@ -45,7 +45,7 @@ export default function SendModal({ leadIds, onClose }: Props) {
       setError(data.error ?? "Ошибка отгрузки");
       return;
     }
-    setResult({ sent: data.sent ?? 0, failed: data.failed ?? 0 });
+    setResult({ sent: data.sent ?? 0, failed: data.failed ?? 0, capped: data.capped, cap: data.cap });
     router.refresh();
   }
 
@@ -59,7 +59,7 @@ export default function SendModal({ leadIds, onClose }: Props) {
         <div className="modal-body">
           <div className="field">
             <label>Выбрано лидов</label>
-            <input value={`${leadIds.length} лид(ов) к отгрузке`} readOnly />
+            <input value={`${selection.count.toLocaleString("ru-RU")} лид(ов) к отгрузке`} readOnly />
           </div>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text-dim)", marginBottom: 9 }}>
             Офис назначения
@@ -85,7 +85,7 @@ export default function SendModal({ leadIds, onClose }: Props) {
           {error && <div style={{ color: "var(--red)", fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{error}</div>}
           {result && (
             <div style={{ color: "var(--green)", fontSize: 13, fontWeight: 600, marginTop: 12 }}>
-              Отгружено: {result.sent}{result.failed ? ` · ошибок: ${result.failed}` : ""}
+              Отгружено: {result.sent}{result.failed ? ` · ошибок: ${result.failed}` : ""}{result.capped ? ` · (лимит ${result.cap} за раз)` : ""}
             </div>
           )}
         </div>

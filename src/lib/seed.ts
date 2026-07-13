@@ -9,6 +9,10 @@ import Affiliate from "@/models/Affiliate";
 import Lead from "@/models/Lead";
 import Delivery from "@/models/Delivery";
 import StatusEvent from "@/models/StatusEvent";
+import RoutingRule from "@/models/RoutingRule";
+import Payout from "@/models/Payout";
+import LeadField from "@/models/LeadField";
+import LeadNote from "@/models/LeadNote";
 import { encrypt } from "@/lib/crypto";
 import type { LeadStatus, SourceType } from "@/lib/enums";
 
@@ -73,12 +77,12 @@ async function seed(): Promise<void> {
 
   // ── Агенты ──────────────────────────────────────────────────────────────
   const agentSeed = [
-    { name: "Иван Петров", title: "Team Lead", online: true, color: "#4f7cff,#6a5cff", t: 0 },
-    { name: "Мария Кузьменко", title: "Retention", online: true, color: "#f5a524,#f5455c", t: 1 },
-    { name: "Ольга Савченко", title: "Sales agent", online: true, color: "#25c281,#1fa86e", t: 0 },
-    { name: "Дмитрий Коваль", title: "Sales agent", online: false, color: "#9b6dff,#6a5cff", t: 0 },
-    { name: "Наталья Лис", title: "Retention", online: true, color: "#4f7cff,#25c281", t: 1 },
-    { name: "Роман Бондар", title: "Sales agent", online: false, color: "#f5455c,#9b6dff", t: 1 },
+    { name: "Иван Петров", title: "Team Lead", online: true, color: "#4f7cff,#6a5cff", t: 0, cap: 15 },
+    { name: "Мария Кузьменко", title: "Retention", online: true, color: "#f5a524,#f5455c", t: 1, cap: 12 },
+    { name: "Ольга Савченко", title: "Sales agent", online: true, color: "#25c281,#1fa86e", t: 0, cap: 10 },
+    { name: "Дмитрий Коваль", title: "Sales agent", online: false, color: "#9b6dff,#6a5cff", t: 0, cap: 10 },
+    { name: "Наталья Лис", title: "Retention", online: true, color: "#4f7cff,#25c281", t: 1, cap: 12 },
+    { name: "Роман Бондар", title: "Sales agent", online: false, color: "#f5455c,#9b6dff", t: 1, cap: 8 },
   ];
   const agents = await Agent.create(
     agentSeed.map((a) => ({
@@ -86,6 +90,7 @@ async function seed(): Promise<void> {
       title: a.title,
       isOnline: a.online,
       color: a.color,
+      capacity: a.cap,
       team: teams[a.t]._id,
       owner: teams[a.t].owner,
     })),
@@ -144,6 +149,45 @@ async function seed(): Promise<void> {
     })),
   );
 
+  // ── Реальный коннектор MVCRM (если задан токен в env) ────────────────────
+  const mvToken = process.env.MVCRM_API_TOKEN?.trim();
+  if (mvToken) {
+    const mvOffice = await Office.create({
+      name: "MyView CRM",
+      code: "mvcrm",
+      logoText: "MV",
+      color: "#6a5cff,#4f7cff",
+      isActive: true,
+    });
+    await Integration.create({
+      office: mvOffice._id,
+      name: "MVCRM · MyView CRM",
+      apiType: "REST_JSON",
+      baseUrl: process.env.MVCRM_BASE_URL?.trim() || "https://mvcrm.online",
+      authScheme: "query", // ?api_token=...
+      authKeyName: "api_token",
+      apiKeyEnc: encrypt(mvToken),
+      sendPath: "/customers/integration",
+      statusPath: "/customers/integration",
+      callbackSecretEnc: encrypt("mvcrm_" + Math.floor(rnd() * 1e12).toString(36)),
+      // наши поля → поля MVCRM (first_name, email, phone, source, country обязательны)
+      fieldMappings: [
+        { externalField: "first_name", internalField: "firstName" },
+        { externalField: "last_name", internalField: "lastName" },
+        { externalField: "email", internalField: "email" },
+        { externalField: "phone", internalField: "phone" },
+        { externalField: "country", internalField: "geo" },
+        { externalField: "source", internalField: "affiliateTag" },
+      ],
+      statusMappings,
+      isActive: true,
+      sandbox: false, // РЕАЛЬНАЯ отправка по HTTP
+      connState: "ok",
+    });
+    // eslint-disable-next-line no-console
+    console.log("[leadhub] Подключён реальный коннектор MVCRM (sandbox=false).");
+  }
+
   // ── Источники ───────────────────────────────────────────────────────────
   const inFieldMap = [
     { externalField: "name", internalField: "fullName" },
@@ -172,13 +216,33 @@ async function seed(): Promise<void> {
 
   // ── Аффилиаты ───────────────────────────────────────────────────────────
   const affiliateSeed = [
-    { name: "MediaBuy Karl", tag: "aff_karl", platform: "Meta Ads", status: "active" as const },
-    { name: "FB Traffic Pro", tag: "fb_pro", platform: "Facebook", status: "active" as const },
-    { name: "Google Ads Nord", tag: "g_nord", platform: "Google", status: "active" as const },
-    { name: "Native Stream", tag: "nat_str", platform: "Taboola", status: "review" as const },
+    { name: "MediaBuy Karl", tag: "aff_karl", platform: "Meta Ads", status: "active" as const, cpa: 85 },
+    { name: "FB Traffic Pro", tag: "fb_pro", platform: "Facebook", status: "active" as const, cpa: 70 },
+    { name: "Google Ads Nord", tag: "g_nord", platform: "Google", status: "active" as const, cpa: 90 },
+    { name: "Native Stream", tag: "nat_str", platform: "Taboola", status: "review" as const, cpa: 60 },
   ];
-  await Affiliate.create(affiliateSeed);
+  const affiliates = await Affiliate.create(affiliateSeed);
   const affTags = affiliateSeed.map((a) => a.tag);
+
+  // Пара уже сделанных выплат (частичные) — чтобы «выплачено» и «к выплате» были не нулевыми.
+  await Payout.create([
+    { affiliate: affiliates[0]._id, amount: 170, note: "USDT TRC20" },
+    { affiliate: affiliates[2]._id, amount: 90, note: "инвойс #204" },
+  ]);
+
+  // ── Кастомные поля лида (пример: Воронка, Реклама) ──────────────────────
+  await LeadField.create([
+    { key: "funnel", label: "Воронка", order: 0 },
+    { key: "ad", label: "Реклама", order: 1 },
+  ]);
+  const funnels = ["Crypto Pro", "Forex VIP", "Trading Boost", "Invest Elite"];
+  const ads = ["fb_video_1", "google_search", "native_bnr", "tt_reels_3"];
+
+  // ── Правила авто-роутинга (выключены по умолчанию) ──────────────────────
+  await RoutingRule.create([
+    { name: "Karl DE/AT → Alpha", priority: 1, enabled: false, office: offices[0]._id, conditions: { affiliateTags: ["aff_karl"], geos: ["DE", "AT"], balanceZero: false } },
+    { name: "PL/CZ баланс 0 → Beta", priority: 2, enabled: false, office: offices[1]._id, conditions: { affiliateTags: [], geos: ["PL", "CZ"], balanceZero: true } },
+  ]);
 
   // ── Лиды + отгрузки + история статусов ──────────────────────────────────
   const firstNames = ["Lukas", "Anna", "Carlos", "Giulia", "Thomas", "Emma", "Jan", "Mikael", "Sofia", "Marco", "Elena", "Piotr", "Nina", "Hugo", "Laura", "Andreas"];
@@ -209,6 +273,7 @@ async function seed(): Promise<void> {
 
   const deliveries: Record<string, unknown>[] = [];
   const events: Record<string, unknown>[] = [];
+  const notes: Record<string, unknown>[] = [];
   let extSeq = 88_400;
 
   for (let i = 0; i < statusPlan.length; i++) {
@@ -231,13 +296,15 @@ async function seed(): Promise<void> {
 
     const enc = Lead.buildEncrypted({ fullName, email, phone, raw: { name: fullName, email, phone, geo, aff: tag } });
     const externalId = hasOffice ? `TB-${extSeq++}` : undefined;
+    const comment = pick(comments);
 
     const lead = await Lead.create({
       ...enc,
       geo,
       affiliateTag: tag,
       balance,
-      comment: pick(comments),
+      comment,
+      custom: { funnel: pick(funnels), ad: pick(ads) },
       source: sources[randInt(0, sources.length - 1)]._id,
       sourceType: sourceSeed[0].type,
       office: officeIdx >= 0 ? offices[officeIdx]._id : null,
@@ -249,6 +316,9 @@ async function seed(): Promise<void> {
       createdAt,
       updatedAt: sentAt ?? createdAt,
     });
+
+    // Комментарий как импортированная заметка (эмуляция базы клиента).
+    notes.push({ lead: lead._id, text: comment, author: "Импорт", source: "import", createdAt });
 
     // История статусов: NEW → (SENT) → текущий
     const evAt = createdAt;
@@ -287,6 +357,7 @@ async function seed(): Promise<void> {
 
   if (deliveries.length) await Delivery.create(deliveries);
   if (events.length) await StatusEvent.create(events);
+  if (notes.length) await LeadNote.create(notes);
 
   // eslint-disable-next-line no-console
   console.log(

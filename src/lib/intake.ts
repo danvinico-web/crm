@@ -84,6 +84,17 @@ export function validateMapped(m: MappedLead): string[] {
   return errors;
 }
 
+/** Приводит кастомные поля к Record<string,string>, отбрасывая пустые. */
+function sanitizeCustom(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (v == null || v === "") continue;
+    out[k] = String(v);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 /**
  * Полный пайплайн приёма одного лида: маппинг → нормализация → валидация →
  * идемпотентность → дедуп → создание. Используется вебхуком и CSV-импортом.
@@ -133,6 +144,10 @@ export async function runIntake(
     if (dup) isDuplicate = true;
   }
 
+  // Комментарий и кастомные поля из payload (напр. при импорте базы клиента).
+  const comment = typeof payload.comment === "string" ? payload.comment.trim() : undefined;
+  const custom = sanitizeCustom(payload.custom);
+
   // 3) Создание.
   const enc = Lead.buildEncrypted({
     fullName: mapped.fullName,
@@ -144,11 +159,19 @@ export async function runIntake(
     ...enc,
     geo: mapped.geo,
     affiliateTag: mapped.affiliateTag,
+    comment: comment || undefined,
+    custom,
     source: source._id,
     sourceType: source.type as SourceType,
     status: isDuplicate ? "DUPLICATE" : "NEW",
     consent: { source: "intake", at: new Date() },
   });
+
+  // Импортированный комментарий сохраняем и в ленту комментариев лида.
+  if (comment) {
+    const { default: LeadNote } = await import("@/models/LeadNote");
+    await LeadNote.create({ lead: lead._id, text: comment, author: "Импорт", source: "import" });
+  }
 
   await StatusEvent.create({
     lead: lead._id,
@@ -157,6 +180,16 @@ export async function runIntake(
     source: "SYSTEM",
     note: isDuplicate ? "Дубль по email/телефону в окне дедупа" : "Принят из источника",
   });
+
+  // Авто-роутинг: если есть включённые правила — отгрузить сразу.
+  if (!isDuplicate) {
+    try {
+      const { autoRoute } = await import("@/lib/routing");
+      await autoRoute(lead);
+    } catch {
+      /* авто-роутинг не критичен для приёма */
+    }
+  }
 
   return { outcome: isDuplicate ? "duplicate" : "created", leadId: String(lead._id) };
 }

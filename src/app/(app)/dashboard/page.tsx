@@ -52,15 +52,18 @@ export default async function DashboardPage() {
   const leadsSeries = days.map((d) => byDayMap.get(d)?.leads ?? 0);
   const depsSeries = days.map((d) => byDayMap.get(d)?.deposits ?? 0);
 
-  const affName = new Map(affiliates.map((a) => [a.tag, a.name]));
-  const topAffiliates = affAgg.map((a) => ({
-    name: affName.get(a._id) ?? a._id,
-    tag: a._id,
-    leads: a.leads,
-    ftd: a.ftd,
-    conv: a.leads ? Math.round((a.ftd / a.leads) * 1000) / 10 : 0,
-    payout: a.payout,
-  }));
+  const affByTag = new Map(affiliates.map((a) => [a.tag, { name: a.name, cpa: a.cpa ?? 0 }]));
+  const topAffiliates = affAgg.map((a) => {
+    const info = affByTag.get(a._id);
+    return {
+      name: info?.name ?? a._id,
+      tag: a._id,
+      leads: a.leads,
+      ftd: a.ftd,
+      conv: a.leads ? Math.round((a.ftd / a.leads) * 1000) / 10 : 0,
+      payout: a.ftd * (info?.cpa ?? 0), // выплата аффилиату = FTD × CPA
+    };
+  });
 
   const leadIds = [...new Set(recentEvents.map((e) => String(e.lead)))];
   const leads = await Lead.find({ _id: { $in: leadIds } }).select("fullNameEnc").lean();

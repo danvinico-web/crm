@@ -3,6 +3,7 @@ import { dbConnect } from "@/lib/db";
 import { Integration, AuditLog, User } from "@/models";
 import { getSessionUser } from "@/lib/rbac";
 import { LEAD_STATUS_LABEL, type LeadStatus } from "@/lib/enums";
+import LeadFieldsManager from "@/components/LeadFieldsManager";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,10 @@ export default async function SettingsPage() {
           <h4>Роли и доступы</h4>
           <p><b>ADMIN</b> — создаёт пользователей, видит всё, управляет ключами. <b>USER</b> — создаёт команды/агентов, работает с лидами и отгрузкой.</p>
         </div>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <LeadFieldsManager />
       </div>
 
       <div className="grid-2b">

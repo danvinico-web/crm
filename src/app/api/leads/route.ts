@@ -1,10 +1,56 @@
+import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Lead } from "@/models";
-import { apiHandler, requireUser } from "@/lib/rbac";
+import { Lead, StatusEvent, AuditLog, LeadNote } from "@/models";
+import { apiHandler, requireUser, HttpError } from "@/lib/rbac";
 import { decryptNullable } from "@/lib/crypto";
+import { normalizeEmail, normalizePhone, isValidEmail } from "@/lib/normalize";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/enums";
 
 export const dynamic = "force-dynamic";
+
+const createSchema = z.object({
+  fullName: z.string().trim().min(2, "Укажите имя"),
+  email: z.string().trim().optional(),
+  phone: z.string().trim().optional(),
+  geo: z.string().trim().max(2).optional(),
+  affiliateTag: z.string().trim().optional(),
+  comment: z.string().trim().optional(),
+  custom: z.record(z.string()).optional(),
+});
+
+/** Ручное создание лида (кнопка «Добавить лид»). */
+export async function POST(req: Request) {
+  return apiHandler(async () => {
+    const me = await requireUser();
+    const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) throw new HttpError(422, parsed.error.issues[0]?.message ?? "Неверные данные");
+    const d = parsed.data;
+    const email = normalizeEmail(d.email);
+    const phone = normalizePhone(d.phone);
+    if (!email && !phone) throw new HttpError(422, "Нужен email или телефон");
+    if (email && !isValidEmail(email)) throw new HttpError(422, "Некорректный email");
+
+    await dbConnect();
+    const custom = d.custom
+      ? Object.fromEntries(Object.entries(d.custom).filter(([, v]) => v != null && v !== ""))
+      : undefined;
+    const enc = Lead.buildEncrypted({ fullName: d.fullName, email, phone, raw: { manual: true, by: me.id } });
+    const lead = await Lead.create({
+      ...enc,
+      geo: d.geo ? d.geo.toUpperCase() : undefined,
+      affiliateTag: d.affiliateTag,
+      comment: d.comment,
+      custom,
+      sourceType: "API",
+      status: "NEW",
+      consent: { source: "manual", at: new Date() },
+    });
+    await StatusEvent.create({ lead: lead._id, rawStatus: "new", status: "NEW", source: "MANUAL", note: "Создан вручную" });
+    if (d.comment) await LeadNote.create({ lead: lead._id, text: d.comment, author: me.name ?? "Пользователь", source: "user" });
+    await AuditLog.create({ user: me.id, action: "lead.create", entity: "Lead", entityId: String(lead._id) });
+    return { ok: true, leadId: String(lead._id) };
+  });
+}
 
 /** Компактный список лидов (id, статус, имя). Поддерживает ?status= и ?limit=. */
 export async function GET(req: Request) {

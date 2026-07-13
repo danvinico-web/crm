@@ -65,6 +65,7 @@ export const INTERNAL_FIELDS = [
   { key: "phone", label: "Телефон" },
   { key: "geo", label: "Гео" },
   { key: "affiliateTag", label: "Метка аффилиата" },
+  { key: "comment", label: "Комментарий" },
 ] as const;
 
 /** Автоугадывание маппинга колонка → внутреннее поле по названию заголовка. */
@@ -76,6 +77,7 @@ export function guessMapping(headers: string[]): Record<string, string> {
     phone: /(phone|tel|телефон|msisdn)/i,
     geo: /(geo|country|страна|гео)/i,
     affiliateTag: /(aff|sub[_ ]?id|publisher|метка|source[_ ]?tag)/i,
+    comment: /(comment|коммент|заметк|note|примечан)/i,
   };
   for (const [internal, re] of Object.entries(rules)) {
     const found = headers.find((h) => re.test(h));

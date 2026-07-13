@@ -1,6 +1,8 @@
 import { dbConnect } from "@/lib/db";
 import { Agent, Lead } from "@/models";
 import { initials } from "@/lib/format";
+import AgentCreate from "@/components/AgentCreate";
+import { DeleteButton } from "@/components/RowActions";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ interface AgentStat {
   inWork: number;
   deposits: number;
   conversion: number;
+  capacity: number;
   load: number;
 }
 
@@ -36,12 +39,12 @@ export default async function AgentsPage() {
     },
   ]);
   const statMap = new Map(stats.map((s) => [String(s._id), s]));
-  const maxAssigned = Math.max(1, ...stats.map((s) => s.assigned));
 
   const rows: AgentStat[] = agents.map((a) => {
     const st = statMap.get(String(a._id));
     const assigned = st?.assigned ?? 0;
     const deposits = st?.deposits ?? 0;
+    const capacity = a.capacity ?? 12;
     return {
       id: String(a._id),
       name: a.name,
@@ -52,7 +55,9 @@ export default async function AgentsPage() {
       inWork: st?.inWork ?? 0,
       deposits,
       conversion: assigned ? Math.round((deposits / assigned) * 1000) / 10 : 0,
-      load: Math.round((assigned / maxAssigned) * 100),
+      capacity,
+      // Нагрузка = сколько лидов ведёт агент относительно его ёмкости (capacity).
+      load: Math.min(100, Math.round((assigned / capacity) * 100)),
     };
   });
   const online = rows.filter((r) => r.isOnline).length;
@@ -61,6 +66,7 @@ export default async function AgentsPage() {
     <>
       <div className="section-head">
         <h2>Команда · {rows.length} агентов, {online} онлайн</h2>
+        <AgentCreate />
       </div>
 
       <div className="agent-grid">
@@ -81,7 +87,7 @@ export default async function AgentsPage() {
               <div className="s"><div className="v">{a.inWork}</div><div className="k">в работе</div></div>
               <div className="s"><div className="v" style={{ color: "var(--green)" }}>{a.conversion}%</div><div className="k">конв.</div></div>
             </div>
-            <div className="load-lbl"><span>Нагрузка</span><span style={{ fontWeight: 700, color: loadColor(a.load) }}>{a.load}%</span></div>
+            <div className="load-lbl"><span>Нагрузка · {a.assigned}/{a.capacity} лидов</span><span style={{ fontWeight: 700, color: loadColor(a.load) }}>{a.load}%</span></div>
             <div className="load"><span style={{ width: `${a.load}%`, background: loadColor(a.load) }} /></div>
           </div>
         ))}
@@ -95,7 +101,7 @@ export default async function AgentsPage() {
         <div className="tbl-scroll">
           <table>
             <thead>
-              <tr><th>Агент</th><th>Роль</th><th>Статус</th><th>Назначено</th><th>В работе</th><th>Конверсия</th><th>Депозиты</th><th>Нагрузка</th></tr>
+              <tr><th>Агент</th><th>Роль</th><th>Статус</th><th>Назначено</th><th>В работе</th><th>Конверсия</th><th>Депозиты</th><th>Нагрузка</th><th></th></tr>
             </thead>
             <tbody>
               {rows.map((a) => (
@@ -110,7 +116,12 @@ export default async function AgentsPage() {
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div className="load" style={{ width: 80 }}><span style={{ width: `${a.load}%`, background: loadColor(a.load) }} /></div>
-                      <span className="muted" style={{ fontSize: 12 }}>{a.load}%</span>
+                      <span className="muted" style={{ fontSize: 12 }}>{a.load}% · {a.assigned}/{a.capacity}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="row-act" style={{ opacity: 1 }}>
+                      <DeleteButton endpoint={`/api/agents/${a.id}`} confirmText={`Удалить агента ${a.name}? Его лиды станут нераспределёнными.`} />
                     </div>
                   </td>
                 </tr>

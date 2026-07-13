@@ -34,11 +34,15 @@ export async function POST(req: Request) {
     const errorsSample: string[] = [];
 
     for (const row of rows) {
-      // Собираем payload с внутренними ключами по маппингу колонок.
+      // Собираем payload: ядро по внутренним ключам + comment + custom:<key>.
       const payload: Record<string, unknown> = {};
-      for (const [internal, header] of Object.entries(mapping)) {
-        if (header && row[header] != null) payload[internal] = row[header];
+      const custom: Record<string, string> = {};
+      for (const [target, header] of Object.entries(mapping)) {
+        if (!header || row[header] == null || row[header] === "") continue;
+        if (target.startsWith("custom:")) custom[target.slice(7)] = row[header];
+        else payload[target] = row[header];
       }
+      if (Object.keys(custom).length) payload.custom = custom;
       const res = await runIntake(sourceLike, payload);
       tally[res.outcome]++;
       if (res.outcome === "rejected" && errorsSample.length < 5 && res.errors) {

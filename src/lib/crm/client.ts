@@ -72,9 +72,16 @@ export function buildOutboundPayload(lead: OutboundLead, mappings: IFieldMap[]):
   }
   for (const m of mappings) {
     const v = src[m.internalField];
-    if (v != null && v !== "") out[m.externalField] = v;
+    if (v != null && v !== "") out[m.externalField] = applyOutTransform(v, m.transform);
   }
   return out;
+}
+
+function applyOutTransform(value: string, transform?: string): string {
+  if (!transform) return value;
+  if (transform === "lower") return value.toLowerCase();
+  if (transform === "upper") return value.toUpperCase();
+  return value;
 }
 
 function toXml(payload: Record<string, string>): string {
@@ -89,9 +96,12 @@ function toXml(payload: Record<string, string>): string {
 export function extractExternalId(body: unknown): string | undefined {
   if (!body || typeof body !== "object") return undefined;
   const b = body as Record<string, unknown>;
-  const candidates = [b.lead_id, b.leadId, b.id, b.external_id, b.externalId, b.contact_id, b.contactId];
+  const candidates = [
+    b.lead_id, b.leadId, b.id, b.external_id, b.externalId,
+    b.contact_id, b.contactId, b.customer_id, b.customerId,
+  ];
   const data = b.data as Record<string, unknown> | undefined;
-  if (data) candidates.push(data.id, data.lead_id, data.contact_id);
+  if (data) candidates.push(data.id, data.lead_id, data.contact_id, data.customer_id);
   const found = candidates.find((c) => c != null);
   return found != null ? String(found) : undefined;
 }
@@ -126,6 +136,7 @@ export async function sendToCrm(lead: OutboundLead, cfg: CrmConfig): Promise<Sen
   let body: string;
   if (cfg.apiType === "REST_JSON") {
     headers["Content-Type"] = "application/json";
+    headers["Accept"] = "application/json";
     body = JSON.stringify(bodyPayload);
   } else if (cfg.apiType === "FORM_URLENCODED") {
     headers["Content-Type"] = "application/x-www-form-urlencoded";
@@ -147,13 +158,24 @@ export async function sendToCrm(lead: OutboundLead, cfg: CrmConfig): Promise<Sen
     } catch {
       /* оставляем как текст (напр. XML) */
     }
+    // Некоторые CRM (напр. MVCRM) отвечают HTTP 200 с { success: false } —
+    // считаем такой ответ ошибкой и достаём человекочитаемое сообщение.
+    const p = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    const bodyOk = !(p && p.success === false);
+    const ok = res.ok && bodyOk;
+    let error: string | undefined;
+    if (!ok) {
+      if (p && typeof p.message === "string") error = p.message;
+      else if (p && p.errors) error = JSON.stringify(p.errors);
+      else error = `HTTP ${res.status}`;
+    }
     return {
-      ok: res.ok,
+      ok,
       externalId: extractExternalId(parsed),
       httpStatus: res.status,
       requestBody: bodyPayload,
       responseBody: parsed,
-      error: res.ok ? undefined : `HTTP ${res.status}`,
+      error,
     };
   } catch (err) {
     return {
@@ -173,7 +195,7 @@ export async function fetchCrmStatus(externalId: string, cfg: CrmConfig): Promis
   if (!cfg.statusPath) return { ok: false, responseBody: null, error: "statusPath не задан" };
   const url = new URL(cfg.baseUrl.replace(/\/$/, "") + cfg.statusPath);
   url.searchParams.set("id", externalId);
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { Accept: "application/json" };
   if (cfg.authScheme === "header") headers[cfg.authKeyName] = cfg.apiKey;
   else if (cfg.authScheme === "query") url.searchParams.set(cfg.authKeyName, cfg.apiKey);
 

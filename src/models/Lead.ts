@@ -1,7 +1,13 @@
 import mongoose, { Schema, type Model, type Types } from "mongoose";
 import { LEAD_STATUSES, type LeadStatus, type SourceType } from "@/lib/enums";
-import { encrypt, decryptNullable, encryptNullable, blindIndexNullable } from "@/lib/crypto";
+import { encrypt, decryptNullable, encryptNullable, blindIndex, blindIndexNullable } from "@/lib/crypto";
 import { normalizeEmail, normalizePhone } from "@/lib/normalize";
+
+/** Слепые индексы токенов имени — для поиска по имени без расшифровки (точное слово). */
+export function nameTokens(fullName: string): string[] {
+  const tokens = [...new Set((fullName || "").toLowerCase().split(/\s+/).filter((t) => t.length >= 2))];
+  return tokens.map((t) => blindIndex(t));
+}
 
 export interface ILeadConsent {
   source?: string; // из какого источника пришло согласие
@@ -18,11 +24,13 @@ export interface ILead {
   // Слепые индексы для поиска/дедупа без расшифровки
   emailHash?: string;
   phoneHash?: string;
+  nameTokensHash?: string[]; // токены имени (поиск по имени)
   // Операционные (незашифрованные — нужны для фильтров/аналитики)
   geo?: string;
   affiliateTag?: string;
   balance: number;
   comment?: string;
+  custom?: Record<string, string>; // кастомные поля клиента (воронка, реклама и т.п.)
   // Связи
   source?: Types.ObjectId | null;
   sourceType?: SourceType;
@@ -75,10 +83,12 @@ const LeadSchema = new Schema<ILead, ILeadModel, ILeadMethods>(
     rawEnc: { type: String },
     emailHash: { type: String, index: true, sparse: true },
     phoneHash: { type: String, index: true, sparse: true },
+    nameTokensHash: { type: [String], index: true, default: [] },
     geo: { type: String, index: true },
     affiliateTag: { type: String, index: true },
     balance: { type: Number, default: 0 },
     comment: { type: String },
+    custom: { type: Schema.Types.Mixed, default: {} },
     source: { type: Schema.Types.ObjectId, ref: "Source", default: null },
     sourceType: { type: String },
     office: { type: Schema.Types.ObjectId, ref: "Office", default: null, index: true },
@@ -121,6 +131,7 @@ LeadSchema.statics.buildEncrypted = function (input: ILeadInput): Partial<ILead>
     phoneEnc: encryptNullable(phone),
     emailHash: blindIndexNullable(email),
     phoneHash: blindIndexNullable(phone),
+    nameTokensHash: nameTokens(input.fullName ?? ""),
     rawEnc: input.raw !== undefined ? encryptNullable(JSON.stringify(input.raw)) : undefined,
   };
 };

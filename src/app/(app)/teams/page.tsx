@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/rbac";
 import { dbConnect } from "@/lib/db";
 import { Team, Agent, User } from "@/models";
 import CreateTeamForm from "@/components/CreateTeamForm";
+import { DeleteButton } from "@/components/RowActions";
 
 export const dynamic = "force-dynamic";
 
@@ -50,12 +51,13 @@ export default async function TeamsPage() {
                 <th>Владелец</th>
                 <th>Агентов</th>
                 <th>Создана</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {teams.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="muted" style={{ textAlign: "center", padding: 28 }}>
+                  <td colSpan={6} className="muted" style={{ textAlign: "center", padding: 28 }}>
                     Команд пока нет. Создайте первую.
                   </td>
                 </tr>
@@ -67,6 +69,11 @@ export default async function TeamsPage() {
                   <td className="muted">{ownerName.get(String(t.owner)) ?? "—"}</td>
                   <td className="mono">{countMap.get(String(t._id)) ?? 0}</td>
                   <td className="mono muted">{new Date(t.createdAt).toLocaleDateString("ru-RU")}</td>
+                  <td>
+                    <div className="row-act" style={{ opacity: 1 }}>
+                      <DeleteButton endpoint={`/api/teams/${String(t._id)}`} confirmText={`Удалить команду «${t.name}»?`} />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

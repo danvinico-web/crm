@@ -9,6 +9,7 @@ export interface IAffiliate {
   tag: string; // метка аффилиата, напр. "aff_karl"
   platform: string; // "Meta Ads", "Google", "Taboola"…
   status: AffiliateStatus;
+  cpa: number; // выплата аффилиату за один успешный лид (FTD/депозит), USD
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +20,7 @@ const AffiliateSchema = new Schema<IAffiliate>(
     tag: { type: String, required: true, unique: true, trim: true },
     platform: { type: String, default: "" },
     status: { type: String, enum: ["active", "review", "paused"], default: "active" },
+    cpa: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

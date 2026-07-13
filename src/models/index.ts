@@ -9,3 +9,7 @@ export { default as Lead } from "@/models/Lead";
 export { default as Delivery } from "@/models/Delivery";
 export { default as StatusEvent } from "@/models/StatusEvent";
 export { default as AuditLog } from "@/models/AuditLog";
+export { default as RoutingRule } from "@/models/RoutingRule";
+export { default as Payout } from "@/models/Payout";
+export { default as LeadField } from "@/models/LeadField";
+export { default as LeadNote } from "@/models/LeadNote";

@@ -2,6 +2,7 @@ import { dbConnect } from "@/lib/db";
 import { Office, Integration, Delivery, Lead } from "@/models";
 import { decryptNullable } from "@/lib/crypto";
 import { API_TYPE_LABEL } from "@/lib/enums";
+import { officeSummaryMap, emptyOfficeSummary } from "@/lib/officeStats";
 import DistributionTabs, { type OfficeCard, type LogRow } from "@/components/DistributionTabs";
 
 export const dynamic = "force-dynamic";
@@ -9,24 +10,19 @@ export const dynamic = "force-dynamic";
 export default async function DistributionPage() {
   await dbConnect();
 
-  const [offices, integrations] = await Promise.all([
+  const [offices, integrations, summary] = await Promise.all([
     Office.find().sort({ createdAt: 1 }).lean(),
     Integration.find().lean(),
+    officeSummaryMap(),
   ]);
   const integByOffice = new Map(integrations.map((i) => [String(i.office), i]));
 
-  const stats = await Delivery.aggregate<{ _id: unknown; total: number; accepted: number }>([
-    { $group: { _id: "$office", total: { $sum: 1 }, accepted: { $sum: { $cond: [{ $eq: ["$status", "ACCEPTED"] }, 1, 0] } } } },
-  ]);
-  const statMap = new Map(stats.map((s) => [String(s._id), s]));
-
   const officeCards: OfficeCard[] = offices.map((o) => {
     const integ = integByOffice.get(String(o._id));
-    const st = statMap.get(String(o._id));
-    const total = st?.total ?? 0;
-    const accepted = st?.accepted ?? 0;
+    const s = summary.get(String(o._id)) ?? emptyOfficeSummary();
     return {
       id: String(o._id),
+      integrationId: integ ? String(integ._id) : null,
       name: o.name,
       logoText: o.logoText,
       color: o.color,
@@ -34,9 +30,13 @@ export default async function DistributionPage() {
       apiTypeLabel: integ ? API_TYPE_LABEL[integ.apiType] : "—",
       connState: integ?.connState ?? "idle",
       sandbox: integ?.sandbox ?? false,
-      sent: total,
-      accepted,
-      successPct: total ? Math.round((accepted / total) * 100) : 0,
+      sent: s.sent,
+      inWork: s.inWork,
+      deposits: s.deposits,
+      churn: s.churn,
+      conversion: s.conversion,
+      accepted: s.accepted,
+      successPct: s.successPct,
     };
   });
 

@@ -4,6 +4,7 @@ import { dbConnect } from "@/lib/db";
 import { User } from "@/models";
 import { ROLE_LABELS } from "@/lib/roles";
 import CreateUserForm from "@/components/CreateUserForm";
+import { DeleteButton } from "@/components/RowActions";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export default async function UsersPage() {
                 <th>Роль</th>
                 <th>Статус</th>
                 <th>Создан</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -67,6 +69,13 @@ export default async function UsersPage() {
                     <span className={`badge ${u.isActive ? "b-dep" : "b-off"}`}>{u.isActive ? "Активен" : "Отключён"}</span>
                   </td>
                   <td className="mono muted">{new Date(u.createdAt).toLocaleDateString("ru-RU")}</td>
+                  <td>
+                    <div className="row-act" style={{ opacity: 1 }}>
+                      {String(u._id) !== me.id && (
+                        <DeleteButton endpoint={`/api/users/${String(u._id)}`} confirmText={`Удалить пользователя ${u.email}?`} />
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UploadCloud, Check } from "lucide-react";
 import { parseCsv, guessMapping, INTERNAL_FIELDS, type ParsedCsv } from "@/lib/csv";
@@ -26,6 +26,17 @@ export default function CsvImport({ sources }: { sources: SourceLite[] }) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [customFields, setCustomFields] = useState<{ key: string; label: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/lead-fields").then((r) => r.json()).then((d) => setCustomFields(d.fields ?? [])).catch(() => {});
+  }, []);
+
+  // Ядро + кастомные поля клиента как цели маппинга.
+  const targetFields = [
+    ...INTERNAL_FIELDS.map((f) => ({ key: f.key, label: f.label })),
+    ...customFields.map((f) => ({ key: `custom:${f.key}`, label: `${f.label} (доп. поле)` })),
+  ];
 
   async function onFile(file: File) {
     const text = await file.text();
@@ -94,7 +105,7 @@ export default function CsvImport({ sources }: { sources: SourceLite[] }) {
       {parsed && (
         <>
           <div className="section-title">Маппинг колонок · строк: {parsed.rows.length}</div>
-          {INTERNAL_FIELDS.map((f) => (
+          {targetFields.map((f) => (
             <div className="map-row" key={f.key} style={{ gridTemplateColumns: "1fr 24px 1fr" }}>
               <div className="map-col">
                 <select

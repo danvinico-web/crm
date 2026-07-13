@@ -1,13 +1,25 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { Search, Bell, Plus } from "lucide-react";
+import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Search, Plus } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import AddLeadModal from "@/components/AddLeadModal";
+import NotificationsBell from "@/components/NotificationsBell";
 import { metaForPath } from "@/lib/nav";
 
 export default function Topbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const meta = metaForPath(pathname);
+  const [q, setQ] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const term = q.trim();
+    router.push(term ? `/leads?q=${encodeURIComponent(term)}` : "/leads");
+  }
 
   return (
     <div className="topbar">
@@ -15,21 +27,23 @@ export default function Topbar() {
         <div className="page-title">{meta.title}</div>
         <div className="page-sub">{meta.sub}</div>
       </div>
-      <div className="search">
+      <form className="search" onSubmit={submitSearch}>
         <Search size={16} />
-        <input placeholder="Поиск по имени, email, телефону, метке аффилиата…" />
-      </div>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Поиск: email, телефон, метка, гео, внешний ID…"
+        />
+      </form>
       <div className="top-actions">
         <ThemeToggle />
-        <div className="icon-btn">
-          <Bell size={18} />
-          <span className="dot" />
-        </div>
-        <button className="btn btn-primary">
+        <NotificationsBell />
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
           <Plus size={16} />
           Добавить лид
         </button>
       </div>
+      {showAdd && <AddLeadModal onClose={() => setShowAdd(false)} />}
     </div>
   );
 }

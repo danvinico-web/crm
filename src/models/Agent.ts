@@ -9,6 +9,7 @@ export interface IAgent {
   owner: Types.ObjectId; // пользователь-владелец
   isOnline: boolean;
   color: string; // градиент для аватара, напр. "#4f7cff,#6a5cff"
+  capacity: number; // сколько лидов агент может вести (ёмкость) — база для «нагрузки»
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +22,7 @@ const AgentSchema = new Schema<IAgent>(
     owner: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     isOnline: { type: Boolean, default: false },
     color: { type: String, default: "#4f7cff,#6a5cff" },
+    capacity: { type: Number, default: 12 },
   },
   { timestamps: true },
 );

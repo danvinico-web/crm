@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil } from "lucide-react";
 import type { DeliveryStatus } from "@/lib/enums";
+import { DeleteButton } from "@/components/RowActions";
+import ConnectorForm from "@/components/ConnectorForm";
+import RoutingRules from "@/components/RoutingRules";
 
 export interface OfficeCard {
   id: string;
+  integrationId: string | null;
   name: string;
   logoText: string;
   color: string;
@@ -14,6 +19,10 @@ export interface OfficeCard {
   connState: string;
   sandbox: boolean;
   sent: number;
+  inWork: number;
+  deposits: number;
+  churn: number;
+  conversion: number;
   accepted: number;
   successPct: number;
 }
@@ -45,16 +54,9 @@ const DELIVERY_BADGE: Record<DeliveryStatus, string> = {
 
 const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-const RULES = [
-  { prio: 1, cond: <>Если <b>метка = aff_karl</b> и <b>гео = DE, AT</b> <span className="arrow">→</span> <b>Office Alpha</b>, кап 200/день</>, on: true },
-  { prio: 2, cond: <>Если <b>гео = PL, CZ</b> и <b>баланс = 0</b> <span className="arrow">→</span> <b>Office Beta</b>, round-robin</>, on: true },
-  { prio: 3, cond: <>Если <b>метка = fb_pro</b> <span className="arrow">→</span> <b>Office Delta</b>, приоритет по цене</>, on: true },
-  { prio: 4, cond: <>Fallback: всё остальное <span className="arrow">→</span> <b>Office Gamma</b>, вторичная доставка</>, on: false },
-];
-
 export default function DistributionTabs({ offices, logs }: { offices: OfficeCard[]; logs: LogRow[] }) {
   const [tab, setTab] = useState<"int" | "rules" | "logs">("int");
-  const [rules, setRules] = useState(RULES);
+  const [form, setForm] = useState<null | { integrationId?: string }>(null);
 
   return (
     <>
@@ -80,55 +82,34 @@ export default function DistributionTabs({ offices, logs }: { offices: OfficeCar
                     <div className="int-meta">
                       <span className={`conn ${conn.cls}`}>● {conn.label}</span>
                       <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{o.sandbox ? "dry-run" : "боевой"}</div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
+                        {o.integrationId && (
+                          <button className="mini" title="Редактировать коннектор" onClick={() => setForm({ integrationId: o.integrationId! })}><Pencil size={14} /></button>
+                        )}
+                        <DeleteButton endpoint={`/api/offices/${o.id}`} confirmText={`Удалить офис «${o.name}» и его коннектор?`} />
+                      </div>
                     </div>
                   </div>
                   <div className="int-body">
                     <div className="m"><div className="v">{o.sent}</div><div className="k">отправлено</div></div>
-                    <div className="m"><div className="v">{o.accepted}</div><div className="k">принято</div></div>
-                    <div className="m"><div className="v" style={{ color: o.successPct >= 85 ? "var(--green)" : "var(--red)" }}>{o.successPct}%</div><div className="k">success</div></div>
+                    <div className="m"><div className="v" style={{ color: "var(--green)" }}>{o.deposits}</div><div className="k">депозит</div></div>
+                    <div className="m"><div className="v" style={{ color: "var(--red)" }}>{o.churn}</div><div className="k">слив</div></div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 8, flexWrap: "wrap" }}>
+                    <span className="muted" style={{ fontSize: 12 }}>в работе {o.inWork} · конв. {o.conversion}% · доставка {o.successPct}%</span>
+                    <Link href={`/distribution/${o.id}`} className="btn btn-soft btn-sm">Отслеживать →</Link>
                   </div>
                 </div>
               );
             })}
           </div>
-          <button className="btn btn-ghost" style={{ marginTop: 16 }} onClick={() => alert("Форма подключения офиса — в фазе настроек.")}>
+          <button className="btn btn-ghost" style={{ marginTop: 16 }} onClick={() => setForm({})}>
             <Plus size={16} /> Подключить новый офис / CRM
           </button>
         </>
       )}
 
-      {tab === "rules" && (
-        <>
-          <div className="card">
-            <div className="tbl-toolbar">
-              <b style={{ fontSize: 14 }}>Правила распределения (filter sets)</b>
-              <button className="btn btn-primary btn-sm" style={{ marginLeft: "auto" }} onClick={() => alert("Редактор правил — в фазе настроек.")}>
-                <Plus size={16} /> Новое правило
-              </button>
-            </div>
-            {rules.map((r, i) => (
-              <div className="rule" key={r.prio}>
-                <div className="prio">{r.prio}</div>
-                <div className="cond">{r.cond}</div>
-                <button
-                  className={`switch${r.on ? "" : " off"}`}
-                  aria-label="Вкл/выкл правило"
-                  onClick={() => setRules((rs) => rs.map((x, j) => (j === i ? { ...x, on: !x.on } : x)))}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="card panel" style={{ marginTop: 16 }}>
-            <div className="panel-head"><h3>Postback от офисов</h3><span className="conn ok">● Приём включён</span></div>
-            <p className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
-              Офисы возвращают события <b style={{ color: "var(--text)" }}>FTD / депозит / статус</b> на ваш callback-endpoint. Баланс и статус лида обновляются автоматически (см. фазу «Статусы»).
-            </p>
-            <div className="map-col" style={{ marginTop: 12, fontFamily: "monospace", fontSize: 12 }}>
-              <span>POST&nbsp; /api/status/{"{integrationId}"}</span><span className="chip src">JSON</span>
-            </div>
-          </div>
-        </>
-      )}
+      {tab === "rules" && <RoutingRules />}
 
       {tab === "logs" && (
         <div className="card table-card">
@@ -156,6 +137,8 @@ export default function DistributionTabs({ offices, logs }: { offices: OfficeCar
           </div>
         </div>
       )}
+
+      {form && <ConnectorForm integrationId={form.integrationId} onClose={() => setForm(null)} />}
     </>
   );
 }

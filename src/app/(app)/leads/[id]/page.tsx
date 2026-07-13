@@ -3,10 +3,11 @@ import { notFound } from "next/navigation";
 import mongoose from "mongoose";
 import { ArrowLeft, Phone, Mail, MapPin, Tag } from "lucide-react";
 import { dbConnect } from "@/lib/db";
-import { Lead, Office, Agent, Source, StatusEvent, Delivery } from "@/models";
+import { Lead, Office, Agent, Source, StatusEvent, Delivery, Affiliate, LeadField, LeadNote } from "@/models";
 import { decryptNullable } from "@/lib/crypto";
 import { LEAD_STATUS_BADGE, LEAD_STATUS_LABEL, type LeadStatus, type EventSource } from "@/lib/enums";
 import { avatarGradient, initials, codeToFlag, formatDate, formatMoney } from "@/lib/format";
+import LeadNotes, { type NoteItem } from "@/components/LeadNotes";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +29,26 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   const lead = await Lead.findById(params.id).lean();
   if (!lead) notFound();
 
-  const [office, agent, source, events, deliveries] = await Promise.all([
+  const [office, agent, source, events, deliveries, affiliate, leadFields, noteDocs] = await Promise.all([
     lead.office ? Office.findById(lead.office).lean() : null,
     lead.agent ? Agent.findById(lead.agent).lean() : null,
     lead.source ? Source.findById(lead.source).lean() : null,
-    StatusEvent.find({ lead: lead._id }).sort({ createdAt: -1 }).lean(),
+    StatusEvent.find({ lead: lead._id }).sort({ createdAt: 1 }).lean(), // хронологически: старое сверху, новое снизу
     Delivery.find({ lead: lead._id }).sort({ sentAt: -1 }).lean(),
+    lead.affiliateTag ? Affiliate.findOne({ tag: lead.affiliateTag }).lean() : null,
+    LeadField.find().sort({ order: 1 }).lean(),
+    LeadNote.find({ lead: lead._id }).sort({ createdAt: 1 }).lean(),
   ]);
+
+  const fieldLabel = new Map(leadFields.map((f) => [f.key, f.label]));
+  const customEntries = Object.entries((lead.custom as Record<string, string>) ?? {}).filter(([, v]) => v);
+  const notes: NoteItem[] = noteDocs.map((n) => ({
+    id: String(n._id),
+    text: n.text,
+    author: n.author,
+    source: n.source,
+    createdAt: n.createdAt.toISOString(),
+  }));
   const officeNames = new Map((office ? [office] : []).map((o) => [String(o._id), o.name]));
 
   const fullName = decryptNullable(lead.fullNameEnc) ?? "—";
@@ -73,7 +87,21 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             <div className="m"><div className="v" style={{ fontSize: 14 }}>{source?.name ?? "—"}</div><div className="k">источник</div></div>
           </div>
           {lead.externalId && <div className="muted" style={{ fontSize: 12, marginTop: 12 }}>Внешний ID: <span className="mono">{lead.externalId}</span></div>}
-          {lead.comment && <div style={{ marginTop: 12, fontSize: 13 }}><span className="muted">Комментарий:</span> {lead.comment}</div>}
+          {affiliate && (
+            <div style={{ marginTop: 12, fontSize: 13 }}>
+              <span className="muted">Аффилиат:</span> {affiliate.name} · CPA {formatMoney(affiliate.cpa ?? 0)}
+              {status === "DEPOSIT" && (affiliate.cpa ?? 0) > 0 && (
+                <span style={{ color: "var(--green)", fontWeight: 600 }}> · выплата {formatMoney(affiliate.cpa ?? 0)}</span>
+              )}
+            </div>
+          )}
+          {customEntries.length > 0 && (
+            <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
+              {customEntries.map(([k, v]) => (
+                <div key={k} style={{ fontSize: 13 }}><span className="muted">{fieldLabel.get(k) ?? k}:</span> {v}</div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Таймлайн статусов */}
@@ -106,6 +134,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           </div>
         </div>
       </div>
+
+      {/* Комментарии (импортированные + добавленные) */}
+      <LeadNotes leadId={params.id} initialNotes={notes} />
 
       {/* История отгрузок */}
       <div className="card table-card">
