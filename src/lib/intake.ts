@@ -1,6 +1,7 @@
 import Lead from "@/models/Lead";
 import StatusEvent from "@/models/StatusEvent";
 import type { ISource, IFieldMap } from "@/models/Source";
+import type { IAffiliate } from "@/models/Affiliate";
 import type { Types } from "mongoose";
 import { normalizeEmail, normalizePhone, isValidEmail } from "@/lib/normalize";
 import { blindIndex } from "@/lib/crypto";
@@ -20,8 +21,21 @@ export type IntakeOutcome = "created" | "duplicate" | "idempotent" | "rejected";
 export interface IntakeResult {
   outcome: IntakeOutcome;
   leadId?: string;
+  ref?: number; // человекочитаемый номер лида (для трекинга аффилиатом)
+  status?: string; // текущий статус созданного/найденного лида
   reason?: string;
   errors?: string[];
+}
+
+/** Описывает «происхождение» лида для общего пайплайна сохранения. */
+interface PersistOrigin {
+  sourceId: Types.ObjectId | null;
+  sourceType: SourceType;
+  forcedAffiliateTag?: string; // API аффилиата принудительно ставит свою метку
+  dedupDays: number;
+  idempotencyMatch: Record<string, unknown>; // напр. {source} или {affiliateTag}
+  consentSource: string; // помечает происхождение согласия
+  intakeNote: string; // текст события в ленте статусов
 }
 
 const DEFAULT_DEDUP_DAYS = 30;
@@ -109,34 +123,95 @@ export async function runIntake(
     return { outcome: "rejected", errors };
   }
 
+  const dedupDays = Number((source.config as Record<string, unknown>)?.dedupDays) || DEFAULT_DEDUP_DAYS;
+  return persistLead(mapped, payload, {
+    sourceId: source._id,
+    sourceType: source.type as SourceType,
+    dedupDays,
+    idempotencyMatch: { source: source._id },
+    consentSource: "intake",
+    intakeNote: "Принят из источника",
+  });
+}
+
+/**
+ * Приём лида по API аффилиата (Bearer-ключ). Аффилиат уже аутентифицирован —
+ * его метка принудительно проставляется лиду, поле метки в payload игнорируется.
+ */
+export async function ingestAffiliateLead(
+  aff: Pick<IAffiliate, "tag">,
+  payload: Record<string, unknown>,
+): Promise<IntakeResult> {
+  const norm = normalizeAffiliatePayload(payload);
+  const mapped = mapPayload(norm, []); // без явного маппинга — по синонимам DEFAULT_KEYS
+  const errors = validateMapped(mapped);
+  if (errors.length > 0) {
+    return { outcome: "rejected", errors };
+  }
+
+  return persistLead(mapped, norm, {
+    sourceId: null,
+    sourceType: "API",
+    forcedAffiliateTag: aff.tag,
+    dedupDays: DEFAULT_DEDUP_DAYS,
+    idempotencyMatch: { affiliateTag: aff.tag, sourceType: "API" },
+    consentSource: "affiliate_api",
+    intakeNote: "Принят по API аффилиата",
+  });
+}
+
+/**
+ * Готовит payload API аффилиата к общему маппингу: собирает fullName из
+ * first_name/last_name, если явного имени нет. Остальные синонимы (country→geo,
+ * email, phone) распознаёт mapPayload по DEFAULT_KEYS.
+ */
+function normalizeAffiliatePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...payload };
+  const str = (v: unknown) => (v == null ? "" : String(v).trim());
+  const hasName = str(out.name) || str(out.fullName) || str(out.full_name);
+  if (!hasName) {
+    const full = [str(out.first_name), str(out.last_name)].filter(Boolean).join(" ");
+    if (full) out.name = full;
+  }
+  return out;
+}
+
+/**
+ * Общий «хвост» приёма: идемпотентность → дедуп → создание лида → событие →
+ * авто-роутинг. Вызывается и вебхуком (runIntake), и API аффилиата.
+ */
+async function persistLead(
+  mapped: MappedLead,
+  payload: Record<string, unknown>,
+  origin: PersistOrigin,
+): Promise<IntakeResult> {
   const emailHash = mapped.email ? blindIndex(mapped.email) : undefined;
   const phoneHash = mapped.phone ? blindIndex(mapped.phone) : undefined;
   const hashOr: Record<string, string>[] = [];
   if (emailHash) hashOr.push({ emailHash });
   if (phoneHash) hashOr.push({ phoneHash });
 
-  // 1) Идемпотентность: тот же источник + тот же контакт в пределах суток.
+  // 1) Идемпотентность: то же происхождение + тот же контакт в пределах суток.
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
   if (hashOr.length > 0) {
     const same = await Lead.findOne({
-      source: source._id,
+      ...origin.idempotencyMatch,
       createdAt: { $gte: startOfDay },
       $or: hashOr,
     })
-      .select("_id")
+      .select("_id refId status")
       .lean();
     if (same) {
-      return { outcome: "idempotent", leadId: String(same._id) };
+      return { outcome: "idempotent", leadId: String(same._id), ref: same.refId, status: same.status };
     }
   }
 
   // 2) Дедуп: совпадение по контакту в окне (по любому источнику).
-  const dedupDays = Number((source.config as Record<string, unknown>)?.dedupDays) || DEFAULT_DEDUP_DAYS;
   let isDuplicate = false;
   if (hashOr.length > 0) {
     const dup = await Lead.findOne({
-      createdAt: { $gte: new Date(Date.now() - dedupDays * DAY) },
+      createdAt: { $gte: new Date(Date.now() - origin.dedupDays * DAY) },
       $or: hashOr,
     })
       .select("_id")
@@ -162,14 +237,14 @@ export async function runIntake(
   const lead = await Lead.create({
     ...enc,
     geo: mapped.geo,
-    affiliateTag: mapped.affiliateTag,
+    affiliateTag: origin.forcedAffiliateTag ?? mapped.affiliateTag,
     comment: comment || undefined,
     balanceRaw,
     custom,
-    source: source._id,
-    sourceType: source.type as SourceType,
+    source: origin.sourceId,
+    sourceType: origin.sourceType,
     status: isDuplicate ? "DUPLICATE" : "NEW",
-    consent: { source: "intake", at: new Date() },
+    consent: { source: origin.consentSource, at: new Date() },
   });
 
   // Импортированный комментарий сохраняем и в ленту комментариев лида.
@@ -183,7 +258,7 @@ export async function runIntake(
     rawStatus: isDuplicate ? "duplicate" : "new",
     status: isDuplicate ? "DUPLICATE" : "NEW",
     source: "SYSTEM",
-    note: isDuplicate ? "Дубль по email/телефону в окне дедупа" : "Принят из источника",
+    note: isDuplicate ? "Дубль по email/телефону в окне дедупа" : origin.intakeNote,
   });
 
   // Авто-роутинг: если есть включённые правила — отгрузить сразу.
@@ -196,5 +271,10 @@ export async function runIntake(
     }
   }
 
-  return { outcome: isDuplicate ? "duplicate" : "created", leadId: String(lead._id) };
+  return {
+    outcome: isDuplicate ? "duplicate" : "created",
+    leadId: String(lead._id),
+    ref: lead.refId,
+    status: lead.status,
+  };
 }

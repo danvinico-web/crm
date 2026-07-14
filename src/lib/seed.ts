@@ -15,6 +15,7 @@ import LeadField from "@/models/LeadField";
 import LeadNote from "@/models/LeadNote";
 import LeadStatusDef from "@/models/LeadStatusDef";
 import { encrypt } from "@/lib/crypto";
+import { generateAffiliateApiKey } from "@/lib/apiKey";
 import { DEFAULT_STATUS_DEFS, type LeadStatus, type SourceType } from "@/lib/enums";
 
 /** Детерминированный PRNG (mulberry32) — стабильные демо-данные между запусками. */
@@ -225,7 +226,19 @@ async function seed(): Promise<void> {
     { name: "Google Ads Nord", tag: "g_nord", platform: "Google", status: "active" as const, cpa: 90 },
     { name: "Native Stream", tag: "nat_str", platform: "Taboola", status: "review" as const, cpa: 60 },
   ];
-  const affiliates = await Affiliate.create(affiliateSeed);
+  // Каждому аффилиату сразу выдаём API-ключ для приёма лидов (см. lib/apiKey).
+  const affiliates = await Affiliate.create(
+    affiliateSeed.map((a) => {
+      const gen = generateAffiliateApiKey();
+      return {
+        ...a,
+        apiKeyHash: gen.apiKeyHash,
+        apiKeyEnc: gen.apiKeyEnc,
+        apiKeyPrefix: gen.apiKeyPrefix,
+        apiKeyCreatedAt: gen.apiKeyCreatedAt,
+      };
+    }),
+  );
   const affTags = affiliateSeed.map((a) => a.tag);
 
   // Пара уже сделанных выплат (частичные) — чтобы «выплачено» и «к выплате» были не нулевыми.

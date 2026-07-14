@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Wallet } from "lucide-react";
+import { Plus, X, Wallet, KeyRound, Copy, Check, RefreshCw, Eye } from "lucide-react";
 import { DeleteButton, EditButton } from "@/components/RowActions";
 import { formatMoney } from "@/lib/format";
 
@@ -20,6 +20,7 @@ export interface AffiliateRow {
   earned: number;
   paid: number;
   awaiting: number;
+  apiKeyPrefix: string | null;
 }
 
 const STATUS_BADGE: Record<string, string> = { active: "b-dep", review: "b-work", paused: "b-off" };
@@ -32,10 +33,12 @@ interface PayoutItem { id: string; amount: number; note: string; createdAt: stri
 
 const dateFmt = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
-export default function AffiliatesManager({ rows }: { rows: AffiliateRow[] }) {
+export default function AffiliatesManager({ rows, isAdmin, appUrl }: { rows: AffiliateRow[]; isAdmin: boolean; appUrl: string }) {
   const router = useRouter();
   const [form, setForm] = useState<FormState | null>(null);
   const [payoutFor, setPayoutFor] = useState<AffiliateRow | null>(null);
+  const [keyFor, setKeyFor] = useState<AffiliateRow | null>(null);
+  const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -57,8 +60,12 @@ export default function AffiliatesManager({ rows }: { rows: AffiliateRow[] }) {
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) { setError(data.error ?? "Ошибка сохранения"); return; }
+    const created = !isEdit;
+    const createdName = form.name;
     setForm(null);
     router.refresh();
+    // Новый аффилиат — показываем сгенерированный API-ключ один раз.
+    if (created && data.apiKey) setNewKey({ name: createdName, key: data.apiKey });
   }
 
   return (
@@ -83,11 +90,11 @@ export default function AffiliatesManager({ rows }: { rows: AffiliateRow[] }) {
             <thead>
               <tr>
                 <th>Аффилиат</th><th>Метка</th><th>Источник</th><th>Лиды</th><th>FTD</th><th>CPA</th>
-                <th>Начислено</th><th>Выплачено</th><th>К выплате</th><th>Статус</th><th></th>
+                <th>Начислено</th><th>Выплачено</th><th>К выплате</th><th>API-ключ</th><th>Статус</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={11} className="muted" style={{ textAlign: "center", padding: 24 }}>Аффилиатов пока нет.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={12} className="muted" style={{ textAlign: "center", padding: 24 }}>Аффилиатов пока нет.</td></tr>}
               {rows.map((a) => (
                 <tr key={a.id}>
                   <td><b>{a.name}</b></td>
@@ -99,9 +106,16 @@ export default function AffiliatesManager({ rows }: { rows: AffiliateRow[] }) {
                   <td className="bal">{formatMoney(a.earned)}</td>
                   <td className="mono muted">{formatMoney(a.paid)}</td>
                   <td className="bal" style={{ color: a.awaiting > 0 ? "var(--amber)" : "var(--text-dim)" }}>{formatMoney(a.awaiting)}</td>
+                  <td>
+                    <button className="chip aff mono" title="Управление API-доступом" onClick={() => setKeyFor(a)} style={{ cursor: "pointer", border: "none" }}>
+                      <KeyRound size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />
+                      {a.apiKeyPrefix ? `${a.apiKeyPrefix}…` : "выдать"}
+                    </button>
+                  </td>
                   <td><span className={`badge ${STATUS_BADGE[a.status]}`}>{STATUS_LABEL[a.status]}</span></td>
                   <td>
                     <div className="row-act" style={{ opacity: 1, gap: 6 }}>
+                      <button className="mini" title="API-доступ" onClick={() => setKeyFor(a)} style={{ color: "var(--blue)" }}><KeyRound size={15} /></button>
                       <button className="mini" title="Выплатить" onClick={() => setPayoutFor(a)} style={{ color: "var(--green)" }}><Wallet size={15} /></button>
                       <EditButton onClick={() => { setForm({ id: a.id, name: a.name, tag: a.tag, platform: a.platform, status: a.status, cpa: a.cpa }); setError(null); }} />
                       <DeleteButton endpoint={`/api/affiliates/${a.id}`} confirmText={`Удалить аффилиата «${a.name}»?`} />
@@ -148,7 +162,142 @@ export default function AffiliatesManager({ rows }: { rows: AffiliateRow[] }) {
       )}
 
       {payoutFor && <PayoutModal affiliate={payoutFor} onClose={() => setPayoutFor(null)} />}
+      {keyFor && <ApiKeyModal affiliate={keyFor} isAdmin={isAdmin} appUrl={appUrl} onClose={() => setKeyFor(null)} onChanged={() => router.refresh()} />}
+      {newKey && <NewKeyModal name={newKey.name} apiKey={newKey.key} appUrl={appUrl} onClose={() => setNewKey(null)} />}
     </>
+  );
+}
+
+/** Кнопка «скопировать» с галочкой-подтверждением. */
+function CopyBtn({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="mini"
+      title="Скопировать"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        } catch { /* clipboard недоступен */ }
+      }}
+    >
+      {done ? <Check size={15} style={{ color: "var(--green)" }} /> : <Copy size={15} />}
+    </button>
+  );
+}
+
+/** Блок с примерами эндпоинтов приёма/статуса лидов для аффилиата. */
+function EndpointDocs({ appUrl, tokenPlaceholder }: { appUrl: string; tokenPlaceholder: string }) {
+  const post = `${appUrl}/api/affiliate/leads`;
+  const curl = `curl -X POST "${post}" \\
+  -H "Authorization: Bearer ${tokenPlaceholder}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name":"John Doe","email":"john@example.com","phone":"+15551234567","geo":"US"}'`;
+  return (
+    <>
+      <div className="map-col" style={{ fontFamily: "monospace", fontSize: 12, marginBottom: 6 }}>
+        <span>POST&nbsp; {post}</span><span className="chip aff">upload</span>
+      </div>
+      <div className="map-col" style={{ fontFamily: "monospace", fontSize: 12, marginBottom: 6 }}>
+        <span>GET&nbsp;&nbsp; {post}?from=YYYY-MM-DD&amp;to=YYYY-MM-DD</span><span className="chip aff">status</span>
+      </div>
+      <div className="map-col" style={{ fontFamily: "monospace", fontSize: 12, marginBottom: 10 }}>
+        <span>GET&nbsp;&nbsp; {post}/&#123;ref&#125;</span><span className="chip aff">1 лид</span>
+      </div>
+      <div className="section-title">Пример запроса</div>
+      <pre style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 12, fontSize: 11.5, overflowX: "auto", lineHeight: 1.5, whiteSpace: "pre" }}>{curl}</pre>
+    </>
+  );
+}
+
+/** Одноразовый показ сгенерированного ключа при создании аффилиата. */
+function NewKeyModal({ name, apiKey, appUrl, onClose }: { name: string; apiKey: string; appUrl: string; onClose: () => void }) {
+  return (
+    <div className="overlay show" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 560 }}>
+        <div className="modal-head"><h3>API-ключ · {name}</h3><div className="mini" onClick={onClose}><X size={16} /></div></div>
+        <div className="modal-body">
+          <div style={{ color: "var(--amber)", fontSize: 12.5, fontWeight: 600, marginBottom: 10 }}>
+            Ключ показывается один раз — сохраните его сейчас. Позже админ сможет посмотреть его снова или перевыпустить.
+          </div>
+          <div className="map-col" style={{ fontFamily: "monospace", fontSize: 12.5, marginBottom: 14, wordBreak: "break-all" }}>
+            <span>{apiKey}</span><CopyBtn text={apiKey} />
+          </div>
+          <EndpointDocs appUrl={appUrl} tokenPlaceholder={apiKey} />
+        </div>
+        <div className="modal-foot"><button type="button" className="btn btn-primary" onClick={onClose}>Готово</button></div>
+      </div>
+    </div>
+  );
+}
+
+/** Управление API-доступом аффилиата: показать (админ), перевыпустить, документация. */
+function ApiKeyModal({ affiliate, isAdmin, appUrl, onClose, onChanged }: { affiliate: AffiliateRow; isAdmin: boolean; appUrl: string; onClose: () => void; onChanged: () => void }) {
+  const [key, setKey] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"reveal" | "rotate" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reveal() {
+    setBusy("reveal"); setError(null);
+    const res = await fetch(`/api/affiliates/${affiliate.id}/key`);
+    const data = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) { setError(data.error ?? "Ошибка"); return; }
+    setKey(data.apiKey);
+    if (!affiliate.apiKeyPrefix) onChanged(); // ключ создан на лету — обновим список
+  }
+
+  async function rotate() {
+    if (!window.confirm(`Перевыпустить ключ для «${affiliate.name}»? Старый ключ перестанет работать.`)) return;
+    setBusy("rotate"); setError(null);
+    const res = await fetch(`/api/affiliates/${affiliate.id}/key`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) { setError(data.error ?? "Ошибка"); return; }
+    setKey(data.apiKey);
+    onChanged();
+  }
+
+  const tokenPlaceholder = key ?? (affiliate.apiKeyPrefix ? `${affiliate.apiKeyPrefix}…` : "<ВАШ_КЛЮЧ>");
+
+  return (
+    <div className="overlay show" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 560 }}>
+        <div className="modal-head"><h3>API-доступ · {affiliate.name}</h3><div className="mini" onClick={onClose}><X size={16} /></div></div>
+        <div className="modal-body">
+          <p className="muted" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+            Аффилиат отправляет лиды и запрашивает их статусы по ключу (заголовок <code>Authorization: Bearer</code>).
+            Метка <span className="chip aff">{affiliate.tag}</span> проставляется лидам автоматически.
+          </p>
+
+          <div className="map-col" style={{ fontFamily: "monospace", fontSize: 12.5, marginBottom: 12, wordBreak: "break-all" }}>
+            <span>{key ? key : affiliate.apiKeyPrefix ? `${affiliate.apiKeyPrefix}${"•".repeat(12)}` : "ключ ещё не выдан"}</span>
+            {key && <CopyBtn text={key} />}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {isAdmin && (
+              <button type="button" className="btn btn-soft btn-sm" onClick={reveal} disabled={busy !== null}>
+                <Eye size={15} /> {busy === "reveal" ? "Показываем…" : affiliate.apiKeyPrefix ? "Показать ключ" : "Выдать ключ"}
+              </button>
+            )}
+            {isAdmin && (
+              <button type="button" className="btn btn-soft btn-sm" onClick={rotate} disabled={busy !== null}>
+                <RefreshCw size={15} /> {busy === "rotate" ? "Выпускаем…" : "Перевыпустить"}
+              </button>
+            )}
+          </div>
+          {!isAdmin && <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Показывать и перевыпускать ключ может только администратор.</div>}
+          {error && <div style={{ color: "var(--red)", fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>{error}</div>}
+
+          <EndpointDocs appUrl={appUrl} tokenPlaceholder={tokenPlaceholder} />
+        </div>
+        <div className="modal-foot"><button type="button" className="btn btn-primary" onClick={onClose}>Закрыть</button></div>
+      </div>
+    </div>
   );
 }
 

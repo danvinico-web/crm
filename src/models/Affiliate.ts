@@ -10,6 +10,11 @@ export interface IAffiliate {
   platform: string; // "Meta Ads", "Google", "Taboola"…
   status: AffiliateStatus;
   cpa: number; // выплата аффилиату за один успешный лид (FTD/депозит), USD
+  // API-доступ: приём лидов и получение статусов по внешнему API (см. lib/apiKey).
+  apiKeyHash?: string; // blindIndex(ключ) — для поиска аффилиата по предъявленному ключу
+  apiKeyEnc?: string; // encrypt(ключ) — для показа админу (reveal)
+  apiKeyPrefix?: string; // первые символы ключа для отображения без раскрытия
+  apiKeyCreatedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +26,10 @@ const AffiliateSchema = new Schema<IAffiliate>(
     platform: { type: String, default: "" },
     status: { type: String, enum: ["active", "review", "paused"], default: "active" },
     cpa: { type: Number, default: 0 },
+    apiKeyHash: { type: String, index: true, unique: true, sparse: true },
+    apiKeyEnc: { type: String },
+    apiKeyPrefix: { type: String },
+    apiKeyCreatedAt: { type: Date },
   },
   { timestamps: true },
 );

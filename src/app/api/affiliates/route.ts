@@ -2,6 +2,7 @@ import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Affiliate, AuditLog } from "@/models";
 import { apiHandler, requireRoles, HttpError } from "@/lib/rbac";
+import { generateAffiliateApiKey } from "@/lib/apiKey";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export async function GET() {
     await requireRoles(["ADMIN", "USER"]);
     await dbConnect();
     const affiliates = await Affiliate.find().sort({ createdAt: 1 }).lean();
-    return { affiliates: affiliates.map((a) => ({ id: String(a._id), name: a.name, tag: a.tag, platform: a.platform, status: a.status })) };
+    return { affiliates: affiliates.map((a) => ({ id: String(a._id), name: a.name, tag: a.tag, platform: a.platform, status: a.status, apiKeyPrefix: a.apiKeyPrefix ?? null })) };
   });
 }
 
@@ -30,8 +31,16 @@ export async function POST(req: Request) {
     await dbConnect();
     const dup = await Affiliate.findOne({ tag: parsed.data.tag });
     if (dup) throw new HttpError(409, "Аффилиат с такой меткой уже есть");
-    const aff = await Affiliate.create(parsed.data);
+    // Сразу выдаём API-ключ для приёма лидов. Открытый ключ показываем один раз.
+    const gen = generateAffiliateApiKey();
+    const aff = await Affiliate.create({
+      ...parsed.data,
+      apiKeyHash: gen.apiKeyHash,
+      apiKeyEnc: gen.apiKeyEnc,
+      apiKeyPrefix: gen.apiKeyPrefix,
+      apiKeyCreatedAt: gen.apiKeyCreatedAt,
+    });
     await AuditLog.create({ user: me.id, action: "affiliate.create", entity: "Affiliate", entityId: String(aff._id) });
-    return { affiliate: { id: String(aff._id), name: aff.name, tag: aff.tag } };
+    return { affiliate: { id: String(aff._id), name: aff.name, tag: aff.tag, apiKeyPrefix: aff.apiKeyPrefix }, apiKey: gen.key };
   });
 }

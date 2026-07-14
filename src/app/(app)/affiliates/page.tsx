@@ -6,8 +6,9 @@ import AffiliatesManager, { type AffiliateRow } from "@/components/AffiliatesMan
 export const dynamic = "force-dynamic";
 
 export default async function AffiliatesPage() {
-  await requirePageRole(["ADMIN", "USER"]);
+  const me = await requirePageRole(["ADMIN", "USER"]);
   await dbConnect();
+  const appUrl = process.env.APP_URL || "http://localhost:3000";
 
   const [affiliates, stats, paidAgg] = await Promise.all([
     Affiliate.find().sort({ createdAt: 1 }).lean(),
@@ -48,8 +49,9 @@ export default async function AffiliatesPage() {
       earned,
       paid,
       awaiting: Math.max(0, earned - paid),
+      apiKeyPrefix: a.apiKeyPrefix ?? null,
     };
   });
 
-  return <AffiliatesManager rows={rows} />;
+  return <AffiliatesManager rows={rows} isAdmin={me.role === "ADMIN"} appUrl={appUrl} />;
 }
