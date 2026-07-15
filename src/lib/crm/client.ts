@@ -158,7 +158,7 @@ export async function sendToCrm(lead: OutboundLead, cfg: CrmConfig): Promise<Sen
     } catch {
       /* оставляем как текст (напр. XML) */
     }
-    // Некоторые CRM (напр. MVCRM) отвечают HTTP 200 с { success: false } —
+    // Некоторые CRM отвечают HTTP 200 с телом { success: false } —
     // считаем такой ответ ошибкой и достаём человекочитаемое сообщение.
     const p = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
     const bodyOk = !(p && p.success === false);

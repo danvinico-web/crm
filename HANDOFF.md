@@ -10,7 +10,7 @@ Affiliate lead-distribution CRM. Customer receives leads from **Affiliates** →
 - **Dev DB = mongodb-memory-server** (auto-seeds ~28 leads, 6 agents). Start via preview harness: `preview_start({name:"leadhub"})` (port 3000). `.claude/launch.json` exists (runs toolchain-node + `scripts/dev-launch.mjs`); it's **machine-specific, kept out of git**.
 - **Never `npm run build` while dev runs** (clobbers `.next` → unstyled). To clear stale cache: **stop dev → `rm -rf .next` → restart** (a deleted component can linger in the webpack cache).
 - **Reseed on restart** → ids churn (stale `/leads/<id>` / `/distribution/<id>` → 404). Data can accumulate across quick preview restarts within one session; a full stop + `rm -rf .next` + restart returns to a clean 28-lead seed.
-- Verify changes with `npx tsc --noEmit` (safe; doesn't touch `.next`). Secrets in gitignored `.env.local` (real `MVCRM_API_TOKEN` + encryption keys).
+- Verify changes with `npx tsc --noEmit` (safe; doesn't touch `.next`). Secrets in gitignored `.env.local` (`NEXTAUTH_SECRET`, `ENCRYPTION_KEY`, `BLIND_INDEX_KEY`). External offices/CRMs (MyView CRM, etc.) are **added in the admin UI** at `/distribution → «Подключить новый офис / CRM»** (base URL + token + sandbox off), not via env.
 
 ## Accounts
 - `admin@leadhub.local` / `admin12345` — **ADMIN** ("Главный админ")

@@ -154,44 +154,9 @@ async function seed(): Promise<void> {
     })),
   );
 
-  // ── Реальный коннектор MVCRM (если задан токен в env) ────────────────────
-  const mvToken = process.env.MVCRM_API_TOKEN?.trim();
-  if (mvToken) {
-    const mvOffice = await Office.create({
-      name: "MyView CRM",
-      code: "mvcrm",
-      logoText: "MV",
-      color: "#6a5cff,#4f7cff",
-      isActive: true,
-    });
-    await Integration.create({
-      office: mvOffice._id,
-      name: "MVCRM · MyView CRM",
-      apiType: "REST_JSON",
-      baseUrl: process.env.MVCRM_BASE_URL?.trim() || "https://mvcrm.online",
-      authScheme: "query", // ?api_token=...
-      authKeyName: "api_token",
-      apiKeyEnc: encrypt(mvToken),
-      sendPath: "/customers/integration",
-      statusPath: "/customers/integration",
-      callbackSecretEnc: encrypt("mvcrm_" + Math.floor(rnd() * 1e12).toString(36)),
-      // наши поля → поля MVCRM (first_name, email, phone, source, country обязательны)
-      fieldMappings: [
-        { externalField: "first_name", internalField: "firstName" },
-        { externalField: "last_name", internalField: "lastName" },
-        { externalField: "email", internalField: "email" },
-        { externalField: "phone", internalField: "phone" },
-        { externalField: "country", internalField: "geo" },
-        { externalField: "source", internalField: "affiliateTag" },
-      ],
-      statusMappings,
-      isActive: true,
-      sandbox: false, // РЕАЛЬНАЯ отправка по HTTP
-      connState: "ok",
-    });
-    // eslint-disable-next-line no-console
-    console.log("[leadhub] Подключён реальный коннектор MVCRM (sandbox=false).");
-  }
+  // Реальные офисы/CRM (напр. MyView CRM) подключаются админом вручную в
+  // /distribution → «Подключить новый офис / CRM» (base URL, токен, sandbox off).
+  // В базовый сид/env их больше не зашиваем.
 
   // ── Источники ───────────────────────────────────────────────────────────
   const inFieldMap = [
