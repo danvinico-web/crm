@@ -229,7 +229,7 @@ async function seed(): Promise<void> {
   // ── Лиды + отгрузки + история статусов ──────────────────────────────────
   const firstNames = ["Lukas", "Anna", "Carlos", "Giulia", "Thomas", "Emma", "Jan", "Mikael", "Sofia", "Marco", "Elena", "Piotr", "Nina", "Hugo", "Laura", "Andreas"];
   const lastNames = ["Müller", "Kowalska", "Sánchez", "Romano", "Nielsen", "Martin", "de Vries", "Berg", "Novak", "Rossi", "García", "Wójcik", "Andersson", "Dubois", "Bianchi", "Schmidt"];
-  const emailDomains = ["gmx.de", "wp.pl", "gmail.com", "libero.it", "mail.dk", "free.fr", "ziggo.nl", "telia.se"];
+  const emailDomains = ["gmx.example", "wp.example", "gmail.example", "libero.example", "mail.example", "free.example", "ziggo.example", "telia.example"];
   const geos = ["DE", "PL", "ES", "IT", "DK", "FR", "NL", "SE", "AT", "CZ"];
   const comments = ["Внёс FTD, интересует VIP", "Перезвон завтра 12:00", "Ожидает звонка", "Второй депозит", "Не распределён", "Совпадение по телефону", "Звонок ок", "Думает, перезвон пн", "Нет ответа, 2 попытки", "Отказ — нет времени"];
 

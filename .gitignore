@@ -29,3 +29,9 @@ yarn-error.log*
 *.pem
 /coverage
 next-env.d.ts
+
+# локальные конфиги редактора/агента — не коммитим
+.claude/
+
+# инкрементальный кэш сборки TS (регенерируется)
+tsconfig.tsbuildinfo
