@@ -39,12 +39,15 @@ export function apiKeyLookupHash(key: string): string {
   return blindIndex(key.trim());
 }
 
-/** Достаёт ключ из запроса: заголовок `Authorization: Bearer <key>` или `?api_token=<key>`. */
-export function extractApiKey(req: Request, url: URL): string {
+/**
+ * Достаёт ключ ТОЛЬКО из заголовка `Authorization: Bearer <key>`.
+ * Приём ключа через query (`?api_token=`) намеренно убран: секреты в URL
+ * утекают в логи сервера/прокси, историю браузера и заголовок Referer.
+ */
+export function extractApiKey(req: Request): string {
   const auth = req.headers.get("authorization");
   if (auth && /^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, "").trim();
-  const q = url.searchParams.get("api_token");
-  return q ? q.trim() : "";
+  return "";
 }
 
 /** Расшифровывает сохранённый ключ (для reveal админом). undefined, если нет/битый. */

@@ -64,8 +64,9 @@ export function apiHandler<T>(fn: () => Promise<T>): Promise<Response> {
       if (err instanceof HttpError) {
         return NextResponse.json({ error: err.message }, { status: err.status });
       }
+      // Логируем только класс ошибки — тело запроса/PII в серверные логи не пишем.
       // eslint-disable-next-line no-console
-      console.error("[api] unhandled", err);
+      console.error("[api] unhandled:", err instanceof Error ? err.name : "unknown");
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Внутренняя ошибка" },
         { status: 500 },

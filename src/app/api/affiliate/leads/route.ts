@@ -8,6 +8,7 @@ import { maskEmail, maskPhone } from "@/lib/apiKey";
 import {
   authenticateAffiliate,
   affiliateApiHandler,
+  enforceRateLimit,
   parseBody,
   parseDateBound,
 } from "@/lib/affiliateApi";
@@ -15,12 +16,13 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Публичный API аффилиата (аутентификация: Authorization: Bearer <key> или ?api_token=).
+ * Публичный API аффилиата. Аутентификация — ТОЛЬКО `Authorization: Bearer <key>`
+ * (ключ в query не принимается: секреты в URL утекают в логи/историю/Referer).
  *
  *   POST /api/affiliate/leads   — загрузить лид
  *     body (JSON или form): name | first_name+last_name, email, phone, geo|country,
  *                           comment, custom {...}
- *     → 201 { ok:true, lead:{ id, ref, status, outcome } }
+ *     → 201 { ok:true, lead:{ id, ref } }
  *     → 422 { ok:false, error, errors:[...] } при ошибке валидации
  *
  *   GET  /api/affiliate/leads   — статусы лидов аффилиата
@@ -30,11 +32,13 @@ export const dynamic = "force-dynamic";
 
 const MAX_LIMIT = 500;
 const DEFAULT_LIMIT = 100;
+const POST_LIMIT = 120; // приём лидов: на аффилиата в минуту
+const GET_LIMIT = 300; // чтение статусов: на аффилиата в минуту
 
 export async function POST(req: Request) {
   return affiliateApiHandler(async () => {
-    const url = new URL(req.url);
-    const aff = await authenticateAffiliate(req, url);
+    const aff = await authenticateAffiliate(req);
+    enforceRateLimit(`post:${aff._id}`, POST_LIMIT);
     const payload = await parseBody(req);
 
     const result = await ingestAffiliateLead({ tag: aff.tag }, payload);
@@ -59,9 +63,9 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   return affiliateApiHandler(async () => {
-    const url = new URL(req.url);
-    const aff = await authenticateAffiliate(req, url);
-    const sp = url.searchParams;
+    const aff = await authenticateAffiliate(req);
+    enforceRateLimit(`get:${aff._id}`, GET_LIMIT);
+    const sp = new URL(req.url).searchParams;
 
     // Фильтры.
     const query: Record<string, unknown> = { affiliateTag: aff.tag };

@@ -4,18 +4,18 @@ import { decryptNullable } from "@/lib/crypto";
 import { getStatusDefs } from "@/lib/statuses";
 import { statusMetaMap, statusLabelOf } from "@/lib/enums";
 import { maskEmail, maskPhone } from "@/lib/apiKey";
-import { authenticateAffiliate, affiliateApiHandler, AffiliateApiError } from "@/lib/affiliateApi";
+import { authenticateAffiliate, affiliateApiHandler, enforceRateLimit, AffiliateApiError } from "@/lib/affiliateApi";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/affiliate/leads/:ref — статус одного лида аффилиата по его номеру (refId).
- * Аутентификация: Authorization: Bearer <key> или ?api_token=.
+ * Аутентификация — ТОЛЬКО Authorization: Bearer <key> (ключ в query не принимается).
  */
 export async function GET(req: Request, { params }: { params: { ref: string } }) {
   return affiliateApiHandler(async () => {
-    const url = new URL(req.url);
-    const aff = await authenticateAffiliate(req, url);
+    const aff = await authenticateAffiliate(req);
+    enforceRateLimit(`ref:${aff._id}`, 300);
 
     if (!/^\d+$/.test(params.ref)) throw new AffiliateApiError(404, "Lead not found");
 

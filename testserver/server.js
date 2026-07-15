@@ -190,7 +190,8 @@ async function handleCreateCustomer(url, req, res) {
   const customer = addCustomer(aff, { ...data, country });
 
   if (config.logRequests) {
-    console.log(`[POST] created customer #${customer.id} (${customer.email}) for aff #${aff.id}`);
+    // Не логируем PII (email) — только идентификаторы.
+    console.log(`[POST] created customer #${customer.id} for aff #${aff.id}`);
   }
 
   // Успех.
